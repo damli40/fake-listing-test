@@ -94,7 +94,12 @@ def _is_agent(entry):
     return not (entry.get("ua") or "").lower().startswith("curl/")
 
 
-def summarize(schedule, rows, fetches):
+def summarize(schedule, rows, fetches, required=stats.RUNS_PER_CONDITION, outcomes=None,
+              is_agent=None):
+    """required: runs a condition needs before it gets a verdict. outcomes: the allowed
+    outcome names. is_agent: which log records count as the agent's own fetches."""
+    OUTCOMES = outcomes or globals()["OUTCOMES"]
+    _is_agent = is_agent or globals()["_is_agent"]
     by_id = {r["run_id"]: r for r in schedule}
     runs, ua_counts = {}, Counter()
     for row in rows:
@@ -152,7 +157,7 @@ def summarize(schedule, rows, fetches):
             d["p_vs_control"] = stats.fisher_two_sided(d["picked_target"], d["n"],
                                                        ctl["picked_target"], ctl["n"])
             d["verdict"] = stats.verdict(d["picked_target"], d["n"],
-                                         ctl["picked_target"], ctl["n"])
+                                         ctl["picked_target"], ctl["n"], required=required)
             d["p_fetched"] = stats.fisher_two_sided(
                 d["picked_target_fetched"], d["fetched_both"],
                 ctl["picked_target_fetched"], ctl["fetched_both"])

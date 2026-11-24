@@ -39,11 +39,19 @@ def check(name, ok, detail=""):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("base")
+    ap.add_argument("--manual-only", action="store_true", help="check only the 50 manual-arm runs")
     ap.add_argument("--log", help="a log file; check every page fetch made here is in it")
     args = ap.parse_args()
     base = args.base.rstrip("/")
     schedule = json.loads((ROOT / "schedule.json").read_text())
+    api_file = ROOT / "schedule-api.json"
+    if api_file.exists() and not args.manual_only:
+        schedule = schedule + json.loads(api_file.read_text())
     control_honest = shop.render_page(TOKEN, None)
+    from concurrent.futures import ThreadPoolExecutor
+    paths = ["/r/%s/%s" % (run["run_id"], slot) for run in schedule for slot in "ab"]
+    with ThreadPoolExecutor(8) as ex:
+        got = dict(zip(paths, ex.map(lambda p: curl(base + p), paths)))
     counts = {c: {"pages": 0, "marker_on_target": 0, "marker_on_other": 0,
                   "honest_identical": 0, "honest_pages": 0} for c in shop.CONDITIONS}
     fetched_paths = []
@@ -52,7 +60,7 @@ def main():
         c = run["condition"]
         for slot in "ab":
             path = "/r/%s/%s" % (run["run_id"], slot)
-            status, headers, body = curl(base + path)
+            status, headers, body = got[path]
             fetched_paths.append(path)
             counts[c]["pages"] += 1
             check(path + " status 200", status == 200, str(status))
@@ -91,7 +99,7 @@ def main():
     for c in shop.CONDITIONS:
         d = counts[c]
         print("%-9s  %5d  %20s  %17d  %s" % (
-            c, d["pages"], "n/a" if c == "control" else "%d/10" % d["marker_on_target"],
+            c, d["pages"], "n/a" if c == "control" else "%d/%d" % (d["marker_on_target"], d["pages"] // 2),
             d["marker_on_other"], "%d/%d" % (d["honest_identical"], d["honest_pages"])))
     print("robots.txt, /about, /buy, noindex header and meta: checked on %d fetches"
           % len(fetched_paths))

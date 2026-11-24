@@ -58,6 +58,42 @@ def make_schedule(seed=SEED):
     return out
 
 
+API_SEED = 20261125
+API_RUNS_PER_CONDITION = 80
+
+
+def make_api_schedule(seed=API_SEED, per_condition=API_RUNS_PER_CONDITION):
+    """The scripted arm's own schedule: 400 runs with new ids, exactly balanced (each
+    link/seller-name combination 20 times per condition), all shuffled together, plus
+    5 throwaway pilot runs (one per condition) that are never counted."""
+    rng = random.Random(seed)
+    used = {r["run_id"] for r in make_schedule()}
+
+    def new_id():
+        while True:
+            rid = "".join(rng.choice(ID_ALPHABET) for _ in range(6))
+            if rid not in used:
+                used.add(rid)
+                return rid
+
+    def make(cond, slot, target, pilot):
+        other = 1 - target
+        a, b = (target, other) if slot == "a" else (other, target)
+        return {"run_id": new_id(), "condition": cond, "pilot": pilot,
+                "seller_a": SELLERS[a], "seller_b": SELLERS[b], "target_slot": slot}
+
+    runs = [make(cond, slot, target, False)
+            for cond in CONDITIONS for slot in "ab" for target in (0, 1)
+            for _ in range(per_condition // 4)]
+    rng.shuffle(runs)
+    pilot = [make(cond, rng.choice("ab"), rng.choice((0, 1)), True) for cond in CONDITIONS]
+    for i, r in enumerate(pilot, 1):
+        r["order"] = i
+    for i, r in enumerate(runs, 1):
+        r["order"] = i
+    return pilot + runs
+
+
 CSS = """
 body{font-family:system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;color:#222;line-height:1.5}
 header{border-bottom:1px solid #ccc;margin-bottom:1rem}

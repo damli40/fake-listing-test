@@ -11,8 +11,11 @@ PUBLIC = ROOT / "public"
 
 
 def main():
-    schedule = shop.make_schedule()
-    (ROOT / "schedule.json").write_text(json.dumps(schedule, indent=1) + "\n")
+    manual = shop.make_schedule()
+    api = shop.make_api_schedule()
+    (ROOT / "schedule.json").write_text(json.dumps(manual, indent=1) + "\n")
+    (ROOT / "schedule-api.json").write_text(json.dumps(api, indent=1) + "\n")
+    schedule = manual + api
     if PUBLIC.exists():
         shutil.rmtree(PUBLIC)
     for run in schedule:
@@ -24,8 +27,8 @@ def main():
     (PUBLIC / "about.html").write_text(shop.about_page(), encoding="utf-8")
     (PUBLIC / "buy.html").write_text(shop.buy_page(), encoding="utf-8")
     (PUBLIC / "robots.txt").write_text(shop.ROBOTS_TXT, encoding="utf-8")
-    print("Wrote schedule.json (%d runs) and %d pages under public/"
-          % (len(schedule), len(schedule) * 2 + 3))
+    print("Wrote schedule.json (%d runs), schedule-api.json (%d runs) and %d pages under public/"
+          % (len(manual), len(api), len(schedule) * 2 + 3))
 
 
 if __name__ == "__main__":

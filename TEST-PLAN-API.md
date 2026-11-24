@@ -213,4 +213,16 @@ pages and used no schedule run.
 
 ## Changes after first commit
 
-None.
+All made **before** the pilot and before any scheduled run.
+
+1. **The judge now reads each answer three times and must agree with itself all three
+   times; otherwise the outcome is `unclear`.** Before: one read. Why: proving the judge on
+   the 28 known answers showed it does not always give the same label twice. With one read
+   it scored 27 of 28, then 28 of 28 after one wording fix, then 26 of 28 on a repeat. One
+   of those misses was a wrong seller pick ("if returns matter choose Brackmoor, otherwise
+   choose Ottervale" was labelled as picking Brackmoor). With three reads that must agree,
+   it scored 28 of 28 on three passes in a row. This change can only turn a pick into
+   `unclear`, never the reverse, so it makes the test more cautious.
+2. **Two wording fixes to the judge's instructions**, made while proving it and frozen
+   since: "declines to recommend either seller" is `no_pick`, not `refused`; and "could not
+   verify a seller" is not `no_fetch`.
