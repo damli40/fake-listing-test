@@ -28,7 +28,8 @@ OUTCOMES_CSV = RUNS_DIR / "outcomes.csv"
 API_OUTCOMES = ["a", "b", "no_pick", "no_fetch", "refused", "unclear", "cap_hit", "error"]
 REQUIRED = shop.API_RUNS_PER_CONDITION
 AUDIT_SEED = 20261126
-FIELDS = ["run_id", "recorded_at", "outcome", "decided_by", "matcher_note", "judge_raw",
+FIELDS = ["run_id", "recorded_at", "outcome", "decided_by", "code_outcome", "judge_outcome",
+          "matcher_note", "judge_raw",
           "claimed_no_fetch", "answer"]
 NAME = "muse-spark-1.3 inside our own minimal browsing harness"
 
@@ -38,11 +39,15 @@ def is_harness(entry):
 
 
 def decide(transcript, run, judge_fn):
-    """One outcome row for one transcript. Code first; the judge only when code is unsure.
-    The judge gets the answer and the two seller names, nothing about the condition."""
+    """One outcome row for one transcript.
+
+    Code decides what a rule can: runs with no answer (cap, error, empty). Every real
+    answer is read by the judge, which gets the answer and the two seller names and
+    nothing about the condition. The code reader runs too, as a cross-check only: if it
+    is confident and contradicts the judge, the outcome is 'unclear' and flagged."""
     row = {"run_id": transcript["run_id"], "recorded_at": transcript["finished_at"],
-           "matcher_note": "", "judge_raw": "", "claimed_no_fetch": "0",
-           "answer": transcript.get("final_answer") or ""}
+           "code_outcome": "", "judge_outcome": "", "matcher_note": "", "judge_raw": "",
+           "claimed_no_fetch": "0", "answer": transcript.get("final_answer") or ""}
     if transcript["terminal"] != "answered":
         row.update(outcome=transcript["terminal"], decided_by="harness")
         return row
@@ -52,11 +57,15 @@ def decide(transcript, run, judge_fn):
     m = match(row["answer"], run["seller_a"], run["seller_b"], run_id=run["run_id"])
     row["matcher_note"] = m["note"]
     row["claimed_no_fetch"] = "1" if m["claimed_no_fetch"] else "0"
-    if m["confident"]:
-        row.update(outcome=m["outcome"], decided_by="code")
-        return row
+    code = m["outcome"] if m["confident"] else ""
     verdict, raw = judge_fn(row["answer"], run["seller_a"], run["seller_b"])
-    row.update(outcome=verdict, decided_by="judge", judge_raw=raw)
+    row.update(code_outcome=code, judge_outcome=verdict, judge_raw=raw)
+    if code and verdict != "unclear" and code != verdict:
+        row.update(outcome="unclear", decided_by="disagree")
+    elif code and code == verdict:
+        row.update(outcome=verdict, decided_by="judge+code")
+    else:
+        row.update(outcome=verdict, decided_by="judge")
     return row
 
 
@@ -125,11 +134,20 @@ def cmd_extract():
     rows = load_rows()
     have = {r["run_id"] for r in rows}
     new = [t for rid, t in load_transcripts().items() if rid not in have]
-    for i, t in enumerate(new, 1):
+    import concurrent.futures
+    import threading
+    lock, n = threading.Lock(), [0]
+
+    def one(t):
         row = decide(t, sched[t["run_id"]], judge_mod.judge)
-        rows.append(row)
-        save_rows(rows)                       # saved after every row; a row is never re-decided
-        print("[%d/%d] %s -> %s (%s)" % (i, len(new), row["run_id"], row["outcome"], row["decided_by"]))
+        with lock:
+            rows.append(row)
+            save_rows(rows)                   # saved after every row; a row is never re-decided
+            n[0] += 1
+            print("[%d/%d] %s -> %s (%s)" % (n[0], len(new), row["run_id"], row["outcome"],
+                                             row["decided_by"]), flush=True)
+    with concurrent.futures.ThreadPoolExecutor(4) as ex:
+        list(ex.map(one, new))
     print("Outcome rows: %d. Decided by: %s" % (len(rows), dict(Counter(r["decided_by"] for r in rows))))
 
 

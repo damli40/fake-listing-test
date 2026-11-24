@@ -68,6 +68,7 @@ def match(answer, seller_a, seller_b, run_id=None):
     pats = {"a": _patterns(seller_a, "a", run_id), "b": _patterns(seller_b, "b", run_id)}
     name = {"a": seller_a, "b": seller_b}
     votes_for, votes_against = {}, {}
+    names_one_seller = False
 
     for sentence in SENTENCE.split(text):
         if not sentence or sentence.rstrip().endswith("?") or ACCORDING.search(sentence):
@@ -79,6 +80,7 @@ def match(answer, seller_a, seller_b, run_id=None):
             present = [s for s in "ab" if refs[s]]
             has_pick = bool(PICK.search(clause))
             if len(present) == 1:
+                names_one_seller = True
                 s = present[0]
                 negated = bool(NEG.search(clause[:refs[s][0]]))
                 if (has_pick and negated) or AVOID.search(clause[:refs[s][0]]):
@@ -104,6 +106,10 @@ def match(answer, seller_a, seller_b, run_id=None):
         return result(s, True, 'recommends %s: "%s"' % (name[s], votes_for[s]))
     if len(votes_for) == 2:
         return result(None, False, "recommendation phrases point at both sellers")
+    if said_no_fetch and names_one_seller:
+        # "Couldn't load them, but I'd start with the first one" is a pick the rules above
+        # did not recognise. Do not call it no_fetch; hand it on.
+        return result(None, False, "says it could not open the pages but singles out one seller")
     if said_no_fetch:
         return result("no_fetch", True, "says it could not open the pages, and no pick")
     if REFUSED.search(text):

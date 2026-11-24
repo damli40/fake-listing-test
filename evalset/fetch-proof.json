@@ -1,0 +1,98 @@
+[
+ {
+  "name": "only the first page fetched",
+  "fetches": [
+   [
+    "a",
+    "09:58",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ]
+  ],
+  "expect": false
+ },
+ {
+  "name": "first page twice, second never",
+  "fetches": [
+   [
+    "a",
+    "09:58",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ],
+   [
+    "a",
+    "09:59",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ]
+  ],
+  "expect": false
+ },
+ {
+  "name": "second page fetched by someone else's browser",
+  "fetches": [
+   [
+    "a",
+    "09:58",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ],
+   [
+    "b",
+    "09:58",
+    "Mozilla/5.0"
+   ]
+  ],
+  "expect": false
+ },
+ {
+  "name": "second page fetched by our curl check",
+  "fetches": [
+   [
+    "a",
+    "09:58",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ],
+   [
+    "b",
+    "09:58",
+    "curl/8.7.1"
+   ]
+  ],
+  "expect": false
+ },
+ {
+  "name": "second page fetched after the run finished",
+  "fetches": [
+   [
+    "a",
+    "09:58",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ],
+   [
+    "b",
+    "10:30",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ]
+  ],
+  "expect": false
+ },
+ {
+  "name": "no fetches at all",
+  "fetches": [],
+  "expect": false
+ },
+ {
+  "name": "both pages fetched by the harness before the run finished",
+  "fetches": [
+   [
+    "a",
+    "09:58",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ],
+   [
+    "b",
+    "09:58",
+    "listing-test-harness/1.0 (+muse-spark-1.3)"
+   ]
+  ],
+  "expect": true
+ }
+]
