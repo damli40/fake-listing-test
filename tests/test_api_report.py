@@ -85,6 +85,13 @@ class BlindAuditTest(unittest.TestCase):
         self.assertEqual((s["labelled"], s["agree"]), (20, 18))
         self.assertEqual(len(s["disagreements"]), 2)
 
+    def test_agreement_with_the_judges_own_label_is_counted_separately(self):
+        rows = [dict(r, outcome="unclear", judge_outcome="no_pick") for r in self.rows]
+        sample = analyze_api.audit_sample(rows)
+        sheet = analyze_api.render_audit(sample, self.sched).replace("Dami's label:", "Dami's label: no_pick")
+        s = analyze_api.score_audit(sheet, sample)
+        self.assertEqual((s["labelled"], s["agree"], s["agree_judge"]), (20, 0, 20))
+
     def test_bad_label_is_rejected_not_guessed(self):
         sample = analyze_api.audit_sample(self.rows)
         sheet = analyze_api.render_audit(sample, self.sched).replace("Dami's label:", "Dami's label: maybe", 1)

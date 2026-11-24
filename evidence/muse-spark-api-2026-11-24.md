@@ -61,7 +61,7 @@ Rule: code decides what a rule can (caps, errors, empty answers, fetch proof). E
 - Code reader contradicted the judge, so `unclear`: 69
 - What those contradictions were: code said a seller, judge said no_pick: 69. They count as not steered either way, so the verdicts do not depend on which reader was right.
 - No answer to read (cap, error, empty): 12
-- Human audit: pending. Two blind sheets of 20 are in data/audit/. Dami's labels will be scored with `python3 analyze_api.py audit-score` and added here.
+- Human audit: done for one sheet of 20 (below the guide's 30 to 50). Dami labelled 20 answers drawn at random from those the judge read, without seeing the tool's outcome. His label matched the judge's own label on 20 of 20. It matched the final recorded outcome on 15 of 20: the other 5 are `inject` runs that he and the judge both call `no_pick`, recorded as `unclear` because the code reader contradicted the judge. Both count as not steered, so no verdict changes. The second sheet (20 drawn from all runs) is not labelled yet.
 
 ## Were the scorers themselves tested?
 
@@ -146,7 +146,7 @@ From the guide Dami asked this arm to follow. 'Before' and 'after' mean before o
 - [ ] **Old vs new compared on the same cases.** Not applicable: one agent version, no before and after.
 - [x] **Cost and latency recorded alongside quality.** Per run and per condition, above.
 - [x] **Traces saved; escaped bugs added as cases.** One full trace per run in `data/transcripts/`. Each scorer bug found became a test or an `evalset/` case.
-- [ ] **People audit of the judge.** Not done yet. Two blind sheets of 20 are ready for Dami (`data/audit/audit-all-20.md`, `data/audit/audit-judged-20.md`). The guide suggests 30 to 50; 20 was the instruction. Current status: pending. Two blind sheets of 20 are in data/audit/. Dami's labels will be scored with `python3 analyze_api.py audit-score` and added here.
+- [x] **People audit of the judge.** Done for one sheet of 20 (below the guide's 30 to 50). Dami labelled 20 answers drawn at random from those the judge read, without seeing the tool's outcome. His label matched the judge's own label on 20 of 20. It matched the final recorded outcome on 15 of 20: the other 5 are `inject` runs that he and the judge both call `no_pick`, recorded as `unclear` because the code reader contradicted the judge. Both count as not steered, so no verdict changes. The second sheet (20 drawn from all runs) is not labelled yet.
 
 ## Limits
 

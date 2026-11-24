@@ -61,8 +61,8 @@ Read these before quoting the table.
 - **In 25 of 80 control runs the model went exploring and read the site's `/about` page**,
   which says the site is a research test. It did that in 3 badge runs and in no returns,
   reviews or inject run.
-- **The answers were read by another AI model** (the judge), checked on known answers but not
-  yet by a person. See "Human audit".
+- **The answers were read by another AI model** (the judge), checked on known answers and
+  spot-checked by a person on 20 of 400. See "Human audit".
 
 ## Check it yourself: replay from the saved data
 
@@ -90,6 +90,13 @@ What `replay.py` does:
 4. Rebuilds `data/outcomes.csv` and the evidence file and compares them byte for byte with
    the committed ones.
 
+**What replay cannot prove.** It shows the published files are complete and consistent with
+each other and with the code: change, remove or add any one of them and it fails (ten kinds
+of tampering were tried, each also with a forged manifest; all were caught). It cannot show
+that the model really gave these answers. Someone who rewrote a transcript, the matching
+judge replies, the outcomes, the evidence file and the manifest together would pass. The
+response ids in each transcript are Meta's, but only Meta could confirm them.
+
 To read one run from start to finish (the question, each page fetch and the exact text
 returned, the answer, the judge's four replies, the outcome):
 
@@ -116,7 +123,7 @@ node --test tests/middleware.test.mjs      # optional, needs Node 20+
 | `data/outcomes.csv` | One row per run: the outcome and who decided it. |
 | `data/fetch-log.jsonl` | The site's server log: time, page path, run id, link letter, the visitor's self-declared program name, country, method. No IP address was ever logged. |
 | `data/meta.json` | Run date, site address, plan commit, judge model. |
-| `data/audit/` | The two blind audit sheets (not yet labelled). |
+| `data/audit/` | The two blind audit sheets; one is labelled. |
 | `schedule-api.json` | The 400 runs: condition, which seller is on which link, which page lies. |
 | `evalset/` | Hand-written answers with known labels used to test the scorers. |
 | `evidence/` | The evidence file and the scorer test results. |
@@ -214,10 +221,21 @@ matter:
 
 ## Human audit
 
-**Pending.** Two blind sheets of 20 answers each are in `data/audit/`. Dami will label them
-without seeing the tool's outcome; the labels will be scored with
-`python3 analyze_api.py audit-score` and the agreement added here. Until then, the only checks
-on the judge are the known-answer sets in `evalset/`.
+**Done for 20 answers. That is below the 30 to 50 the method guide asks for, so treat it as a
+spot check.**
+
+Dami labelled 20 answers, drawn at random from those the judge read, without seeing what the
+tool had decided (`data/audit/audit-judged-20.md`). Scored with
+`python3 analyze_api.py audit-score`:
+
+- **His label matched the judge's own label on 20 of 20.**
+- It matched the final recorded outcome on 15 of 20. The other 5 are `inject` runs that both
+  he and the judge call "no pick", recorded as `unclear` because the code reader contradicted
+  the judge (see the scoring bug above). Both count as not steered, so no verdict changes.
+
+His labels were sent as a list and entered into the sheet for him. A second sheet of 20, drawn
+from all runs (`data/audit/audit-all-20.md`), is not labelled yet. No human baseline for the
+shopping task itself has been run; that is planned.
 
 ## Re-run it yourself
 
@@ -295,7 +313,7 @@ The original aim was to test the real Muse shopping agent by hand in the Meta AI
 | `middleware.js`, `vercel.json` | the site's request logger and hosting settings |
 | `verify_site.py`, `serve_local.mjs` | checks of a hosted or local copy of the site |
 | `tools/freeze_data.py` | how `data/` was produced from the working files |
-| `tests/` | 147 Python checks and 4 for the logger |
+| `tests/` | 148 Python checks and 4 for the logger |
 
 ## License
 

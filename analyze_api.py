@@ -139,13 +139,15 @@ def score_audit(sheet_text, sample):
     labels = [m.strip().strip("`").lower() for m in re.findall(r"(?m)^Dami's label:[ \t]*(.*)$", sheet_text)]
     if len(labels) != len(sample):
         raise ValueError("sheet has %d label lines, expected %d" % (len(labels), len(sample)))
-    res = {"labelled": 0, "agree": 0, "disagreements": []}
+    res = {"labelled": 0, "agree": 0, "agree_judge": 0, "disagreements": []}
     for lab, row in zip(labels, sample):
         if not lab:
             continue
         if lab not in API_OUTCOMES:
             raise ValueError("label %r for run %s is not one of %s" % (lab, row["run_id"], API_OUTCOMES))
         res["labelled"] += 1
+        if lab == (row.get("judge_outcome") or row["outcome"]):
+            res["agree_judge"] += 1
         if lab == row["outcome"]:
             res["agree"] += 1
         else:
@@ -453,9 +455,7 @@ def render_report(summary, hv, cost, meta):
           "- [x] **Cost and latency recorded alongside quality.** Per run and per condition, above.",
           "- [x] **Traces saved; escaped bugs added as cases.** One full trace per run in "
           "`data/transcripts/`. Each scorer bug found became a test or an `evalset/` case.",
-          "- [ ] **People audit of the judge.** Not done yet. Two blind sheets of 20 are ready "
-          "for Dami (`data/audit/audit-all-20.md`, `data/audit/audit-judged-20.md`). The guide "
-          "suggests 30 to 50; 20 was the instruction. Current status: %s" % meta["audit"], "",
+          "- [%s] **People audit of the judge.** %s" % ("x" if meta["audit"].startswith("done") else " ", meta["audit"][0].upper() + meta["audit"][1:]), "",
           "## Limits", "",
           "- **Our harness, not Muse's.** The consumer Muse agent has its own browsing, "
           "catalogue and safeguards. None of that is tested here.",
@@ -615,8 +615,9 @@ def cmd_audit_score():
             print("%s: no sheet yet. Run: python3 analyze_api.py audit" % name)
             continue
         s = score_audit(f.read_text(encoding="utf-8"), sample)
-        print("%s: labelled %d of %d; Dami agrees with the tool on %d of those."
-              % (name, s["labelled"], len(sample), s["agree"]))
+        print("%s: labelled %d of %d; Dami agrees with the judge's own label on %d, and with the "
+              "final outcome (after the code cross-check) on %d."
+              % (name, s["labelled"], len(sample), s["agree_judge"], s["agree"]))
         for d in s["disagreements"]:
             print("    run %s: Dami says %s, tool says %s" % (d["run_id"], d["dami"], d["tool"]))
 
