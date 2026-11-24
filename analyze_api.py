@@ -7,6 +7,8 @@ saved transcripts, print the pre-set table, write the evidence file.
     python3 analyze_api.py audit       write the two blind 20-run audit sheets for Dami
     python3 analyze_api.py audit-score compare Dami's labels with the tool's outcomes
     python3 analyze_api.py pilot       summarise the 5 excluded pilot runs
+
+Add `--data DIR` to work on a re-run folder instead of the published `data/`.
 """
 import csv
 import datetime as dt
@@ -24,8 +26,36 @@ import stats
 from matcher import match
 
 ROOT = pathlib.Path(__file__).resolve().parent
-RUNS_DIR = ROOT / "runs-api"
-OUTCOMES_CSV = RUNS_DIR / "outcomes.csv"
+DATA = ROOT / "data"          # the published dataset; --data DIR points at a re-run instead
+
+
+def set_data(path):
+    global DATA
+    DATA = pathlib.Path(path).resolve()
+
+
+def load_meta():
+    f = DATA / "meta.json"
+    return json.loads(f.read_text()) if f.exists() else {}
+
+
+def load_fetches():
+    """Server fetch records: the trimmed published log if present, else raw Vercel exports."""
+    f = DATA / "fetch-log.jsonl"
+    if f.exists():
+        return [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+    return analyze.read_fetches(DATA / "logs")
+
+
+def judge_record(run_id, answer, seller_a, seller_b, raw):
+    """Everything about one judge call, so it can be replayed without calling the judge."""
+    import hashlib
+    reads = raw.split(" || ")
+    return {"run_id": run_id, "judge_model": judge_mod.MODEL_ID,
+            "system_sha256": hashlib.sha256(judge_mod.SYSTEM.encode()).hexdigest(),
+            "prompts": [judge_mod.build_prompt(answer, seller_a, seller_b, swapped=sw)
+                        for sw in (False, False, True, True)],
+            "reads": reads, "verdicts": [judge_mod.parse_verdict(r) for r in reads]}
 API_OUTCOMES = ["a", "b", "no_pick", "no_fetch", "refused", "unclear", "cap_hit", "error"]
 REQUIRED = shop.API_RUNS_PER_CONDITION
 AUDIT_SEED = 20261126
@@ -174,7 +204,7 @@ def per_condition_means(schedule, transcripts):
 
 def load_transcripts():
     out = {}
-    for p in sorted(RUNS_DIR.glob("*.json")):
+    for p in sorted((DATA / "transcripts").glob("*.json")):
         if p.name != "ledger.json":
             t = json.loads(p.read_text())
             out[t["run_id"]] = t
@@ -182,21 +212,35 @@ def load_transcripts():
 
 
 def load_rows():
-    if not OUTCOMES_CSV.exists():
+    f = DATA / "outcomes.csv"
+    if not f.exists():
         return []
-    with open(OUTCOMES_CSV, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+    with open(f, newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def rows_to_csv(rows):
+    import io
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=FIELDS, lineterminator="\n")
+    w.writeheader()
+    w.writerows(rows)
+    return buf.getvalue()
 
 
 def save_rows(rows):
-    with open(OUTCOMES_CSV, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=FIELDS)
-        w.writeheader()
-        w.writerows(rows)
+    (DATA / "outcomes.csv").write_text(rows_to_csv(rows), encoding="utf-8")
 
 
 def load_schedule():
     return json.loads((ROOT / "schedule-api.json").read_text())
+
+
+def decide_all(transcripts, schedule, judge_for):
+    """Outcome rows for every transcript, in run-id order. judge_for(run_id) returns the
+    judge function to use for that run (live, or a replay of stored reads)."""
+    sched = {r["run_id"]: r for r in schedule}
+    return [decide(transcripts[rid], sched[rid], judge_for(rid)) for rid in sorted(transcripts)]
 
 
 def cmd_extract():
@@ -204,14 +248,23 @@ def cmd_extract():
     rows = load_rows()
     have = {r["run_id"] for r in rows}
     new = [t for rid, t in load_transcripts().items() if rid not in have]
+    (DATA / "judge").mkdir(parents=True, exist_ok=True)
     import concurrent.futures
     import threading
     lock, n = threading.Lock(), [0]
 
     def one(t):
-        row = decide(t, sched[t["run_id"]], judge_mod.judge)
+        run = sched[t["run_id"]]
+
+        def live(answer, a, b):
+            verdict, raw = judge_mod.judge(answer, a, b)
+            (DATA / "judge" / (t["run_id"] + ".json")).write_text(
+                json.dumps(judge_record(t["run_id"], answer, a, b, raw), indent=1))
+            return verdict, raw
+        row = decide(t, run, live)
         with lock:
             rows.append(row)
+            rows.sort(key=lambda r: r["run_id"])
             save_rows(rows)                   # saved after every row; a row is never re-decided
             n[0] += 1
             print("[%d/%d] %s -> %s (%s)" % (n[0], len(new), row["run_id"], row["outcome"],
@@ -267,7 +320,7 @@ def render_report(summary, hv, cost, meta):
          "- Runs with a transcript: %d of %d scheduled (5 pilot runs excluded)"
          % (summary["total_recorded"], summary["total_scheduled"]),
          "- Plan fixed in git commit: %s" % meta["plan_commit"],
-         "- Code version when this file was made: %s" % meta["head_commit"], "",
+         "- Judge: `claude -p --model sonnet` (%s)" % meta["judge_model"], "",
          "## Where to look", "",
          "The **verdict** column of the first table is the result. The rest is supporting detail.",
          "", "## Result", "",
@@ -399,9 +452,9 @@ def render_report(summary, hv, cost, meta):
           "no before and after.",
           "- [x] **Cost and latency recorded alongside quality.** Per run and per condition, above.",
           "- [x] **Traces saved; escaped bugs added as cases.** One full trace per run in "
-          "`runs-api/`. Each scorer bug found became a test or an `evalset/` case.",
+          "`data/transcripts/`. Each scorer bug found became a test or an `evalset/` case.",
           "- [ ] **People audit of the judge.** Not done yet. Two blind sheets of 20 are ready "
-          "for Dami (`runs-api/audit-all-20.md`, `runs-api/audit-judged-20.md`). The guide "
+          "for Dami (`data/audit/audit-all-20.md`, `data/audit/audit-judged-20.md`). The guide "
           "suggests 30 to 50; 20 was the instruction. Current status: %s" % meta["audit"], "",
           "## Limits", "",
           "- **Our harness, not Muse's.** The consumer Muse agent has its own browsing, "
@@ -418,21 +471,25 @@ def render_report(summary, hv, cost, meta):
           "- We hand over the links. This tests choosing, not finding.",
           "- The first link is always the `/a` address.",
           "- The judge is another AI model and can be wrong.",
-          "- Full transcripts are kept privately in `runs-api/` and are not in this file.", "",
+          "- Full transcripts are in `data/transcripts/`, one file per run.", "",
           "## The table exactly as printed", "", "```", table, "```", ""]
     return "\n".join(L)
 
 
-def cmd_report(write=True):
+def build_report(rows=None):
+    """Returns (text printed to the screen, evidence file text). Depends only on the files
+    in the data folder and the schedule, never on today's date, git or the network."""
+    lines = []
+    print = lines.append
     schedule = load_schedule()
     main_sched = [r for r in schedule if not r["pilot"]]
     transcripts = load_transcripts()
-    rows = drop_pilot(load_rows(), schedule)
+    rows = drop_pilot(load_rows() if rows is None else rows, schedule)
     missing = [r["run_id"] for r in main_sched if r["run_id"] in transcripts
                and r["run_id"] not in {x["run_id"] for x in rows}]
     if missing:
-        sys.exit("%d transcripts have no outcome yet. Run: python3 analyze_api.py extract" % len(missing))
-    fetches = analyze.read_fetches(ROOT / "logs")
+        raise ValueError("%d transcripts have no outcome yet. Run: python3 analyze_api.py extract" % len(missing))
+    fetches = load_fetches()
     summary = summarize(main_sched, rows, fetches)
     print("Arm: %s. Not the Muse agent.\n" % NAME)
     print(analyze.render_table(summary))
@@ -463,12 +520,11 @@ def cmd_report(write=True):
     print("Runs that also read the /about disclosure: " + ", ".join(
         "%s %d/%d" % (k, v["read_about"], v["n"]) for k, v in hv.items()))
     print("Cost of the %d scheduled runs: $%.2f. Whole ledger: $%.2f."
-          % (len(main_t), cost["cost"], harness.spent(RUNS_DIR)))
-    if not write or not main_t:
-        return
-    today = dt.date.today().isoformat()
-    extra = ROOT / "evidence" / "api-notes.json"
-    notes = json.loads(extra.read_text()) if extra.exists() else {}
+          % (len(main_t), cost["cost"], harness.spent(DATA / "transcripts")))
+    if not main_t:
+        return "\n".join(lines), ""
+    notes = load_meta()
+    today = notes.get("run_date") or min(t["started_at"] for t in main_t)[:10]
     frows = [["condition", "which link lies", "seller on that link", "most common result",
               "runs with it", "other results"]]
     for st in flaky["setups"]:
@@ -496,19 +552,34 @@ def cmd_report(write=True):
             "scorer_note": notes.get("scorer_note", ""),
             "dis_text": dis_text, "flaky": flaky, "flaky_table": analyze._md_table(frows),
             "means_table": analyze._md_table(mrows), "n_rows": len(rows),
-            "date": today, "base_url": json.loads((ROOT / "config.json").read_text())["base_url"],
+            "date": today, "base_url": notes.get("base_url") or json.loads((ROOT / "config.json").read_text())["base_url"],
             "first": min(t["started_at"] for t in main_t)[:19], "last": max(t["finished_at"] for t in main_t)[:19],
-            "plan_commit": analyze._git("log", "--diff-filter=A", "--format=%h %cI", "--", "TEST-PLAN-API.md"),
-            "head_commit": analyze._git("log", "-1", "--format=%h %cI"),
+            "plan_commit": notes.get("plan_commit", "not recorded"),
+            "judge_model": notes.get("judge_model", judge_mod.MODEL_ID),
             "decided": decided,
             "judge_unclear": judge_unclear,
             "judge_by_condition": Counter(by_id[r["run_id"]]["condition"] for r in rows if r["decided_by"] == "disagree"),
-            "judge_check": notes.get("judge_check", "not recorded"),
             "audit": notes.get("audit", "not done yet"),
-            "ledger": harness.spent(RUNS_DIR)}
-    out = ROOT / "evidence" / ("muse-spark-api-%s.md" % today)
-    out.write_text(render_report(summary, hv, cost, meta), encoding="utf-8")
-    print("\nEvidence file written: %s" % out)
+            "ledger": harness.spent(DATA / "transcripts")}
+    return "\n".join(lines), render_report(summary, hv, cost, meta)
+
+
+def evidence_path():
+    name = load_meta().get("evidence_file")
+    return ROOT / name if name else DATA / "evidence.md"
+
+
+def cmd_report():
+    try:
+        text, evidence = build_report()
+    except ValueError as e:
+        sys.exit(str(e))
+    print(text)
+    if evidence:
+        out = evidence_path()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(evidence, encoding="utf-8")
+        print("\nEvidence file written: %s" % out)
 
 
 AUDITS = [("audit-all-20", "20 runs drawn at random from all 400", AUDIT_SEED, lambda r: True),
@@ -527,7 +598,8 @@ def cmd_audit():
     schedule, samples = _audit_samples()
     by_id = {r["run_id"]: r for r in schedule}
     for name, title, sample in samples:
-        out = RUNS_DIR / (name + ".md")
+        out = DATA / "audit" / (name + ".md")
+        out.parent.mkdir(parents=True, exist_ok=True)
         if out.exists():
             print("Kept existing sheet (it may hold Dami's labels): %s" % out)
             continue
@@ -538,7 +610,7 @@ def cmd_audit():
 def cmd_audit_score():
     _, samples = _audit_samples()
     for name, title, sample in samples:
-        f = RUNS_DIR / (name + ".md")
+        f = DATA / "audit" / (name + ".md")
         if not f.exists():
             print("%s: no sheet yet. Run: python3 analyze_api.py audit" % name)
             continue
@@ -569,7 +641,12 @@ def cmd_pilot():
 
 
 if __name__ == "__main__":
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    args = sys.argv[1:]
+    if "--data" in args:
+        i = args.index("--data")
+        set_data(args[i + 1])
+        del args[i:i + 2]
+    cmd = args[0] if args else ""
     fn = {"extract": cmd_extract, "report": cmd_report, "audit": cmd_audit,
           "audit-score": cmd_audit_score, "pilot": cmd_pilot}.get(cmd)
     if not fn:

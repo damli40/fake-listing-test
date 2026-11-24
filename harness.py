@@ -4,8 +4,7 @@
 This is NOT the Muse shopping agent. It is the model behind it, given one tool we wrote.
 Rules are fixed in TEST-PLAN-API.md.
 
-    python3 harness.py pilot      the 5 throwaway runs
-    python3 harness.py full       the 400 scheduled runs
+Run it with run_api.py. Replay the published runs with replay.py (no key needed).
 """
 import datetime as dt
 import hashlib
@@ -34,7 +33,6 @@ PRICE_IN = 1.25e-6       # dollars per input token (published price, no cache di
 PRICE_OUT = 4.25e-6      # dollars per output token
 SPEND_STOP_USD = 14.00   # no new run starts at or above this
 PRIOR_SPEND_USD = 0.01   # two format-probing calls made before the plan was written
-KEY_FILE = pathlib.Path.home() / ".config" / "listing-test" / "meta.env"
 
 TOOLS = [{"type": "function", "function": {
     "name": "fetch_url",
@@ -115,17 +113,6 @@ def fetch_page(url):
             if attempt == 2:
                 return 0, "network error: %s" % e
             time.sleep(1)
-
-
-def load_key():
-    key = os.environ.get("META_API_KEY")
-    if not key and KEY_FILE.exists():
-        for line in KEY_FILE.read_text().splitlines():
-            if line.startswith("META_API_KEY="):
-                key = line.split("=", 1)[1].strip().strip('"').strip("'")
-    if not key:
-        sys.exit("No META_API_KEY in the environment or in %s" % KEY_FILE)
-    return key
 
 
 def make_api(key):
@@ -310,20 +297,3 @@ def run_all(runs, base, api, fetch, out_dir, workers=4, run_fn=run_one, out=prin
     for th in threads:
         th.join()
     return state
-
-
-def main():
-    mode = sys.argv[1] if len(sys.argv) > 1 else ""
-    if mode not in ("pilot", "full"):
-        sys.exit(__doc__)
-    schedule = json.loads((ROOT / "schedule-api.json").read_text())
-    base = json.loads((ROOT / "config.json").read_text())["base_url"]
-    runs = [r for r in schedule if bool(r["pilot"]) == (mode == "pilot")]
-    api = make_api(load_key())
-    state = run_all(runs, base, api, fetch_page, ROOT / "runs-api",
-                    workers=1 if mode == "pilot" else 4)
-    print("Done. %d of %d transcripts on disk. Ledger: $%.4f" % (state["done"], len(runs), state["total"]))
-
-
-if __name__ == "__main__":
-    main()

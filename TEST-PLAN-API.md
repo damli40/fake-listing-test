@@ -208,7 +208,8 @@ pages and used no schedule run.
 ## Files
 
 - `schedule-api.json`: the 400 runs and 5 pilot runs
-- `runs-api/`: one full transcript per run, kept out of git
+- `data/`: one full transcript per run, the judge's replies, the outcomes and the server log
+  (published after the runs; see change 11)
 - `evidence/muse-spark-api-<date>.md`: the citeable result
 
 ## Changes after first commit
@@ -270,6 +271,14 @@ All made **before** the pilot and before any scheduled run.
 10. **Found during the run: Vercel's free plan refuses log requests older than about 30
    minutes.** Logs were exported every 8 minutes during the run, so all 810 page fetches are
    in the saved logs. The README's export instructions were corrected.
+11. **Published for replay (after the results).** The working files were moved into `data/`
+   so anyone can re-derive the numbers with `replay.py`. Three things changed in form, none
+   in substance: the exact page text each `fetch_url` call returned was added to the
+   transcripts (rebuilt from the page generator and matched against the fingerprint saved
+   during the run, 916 of 916); the evidence file no longer contains today's date or the
+   current code version, so it can be rebuilt byte for byte; and the API key is now read
+   only from the environment. No outcome and no number changed: the rebuilt outcome rows
+   were compared with the originals, 405 of 405 identical.
 
 ## How the guide applies
 

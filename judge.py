@@ -33,6 +33,8 @@ VERDICT: <LABEL>"""
 LABELS = {"A": "a", "B": "b", "NO_PICK": "no_pick", "NO_FETCH": "no_fetch",
           "REFUSED": "refused", "CANT_TELL": "unclear"}
 READS_PER_ORDER = 2
+MODEL_ALIAS = "sonnet"                 # what is passed to `claude -p --model`
+MODEL_ID = "claude-sonnet-5-5"         # what that alias resolved to on 24 Nov 2026
 
 
 def build_prompt(answer, seller_a, seller_b, swapped=False):
@@ -57,7 +59,7 @@ def parse_verdict(text):
 
 def claude_runner(system, prompt):
     r = subprocess.run(
-        ["claude", "-p", "--model", "sonnet", "--system-prompt", system, "--tools", "",
+        ["claude", "-p", "--model", MODEL_ALIAS, "--system-prompt", system, "--tools", "",
          "--strict-mcp-config", "--no-session-persistence"],
         input=prompt, capture_output=True, text=True, timeout=240, cwd=tempfile.gettempdir())
     if r.returncode != 0:
