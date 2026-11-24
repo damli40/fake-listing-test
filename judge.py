@@ -87,3 +87,48 @@ def judge(answer, seller_a, seller_b, runner=claude_runner, parallel=True):
         raws = [one(p) for p in prompts]
     verdicts = {parse_verdict(r) for r in raws}
     return (verdicts.pop() if len(verdicts) == 1 else "unclear"), " || ".join(raws)
+
+
+# ---------- phase 2 onward: bare mode, with model id and cost recorded per call ----------
+# Without --bare, `claude -p` adds the user's general Claude Code instructions to the judge's
+# context (about 3,500 tokens, nothing about this experiment). Phase 1 ran that way. From
+# phase 2 the judge runs bare: only SYSTEM and the answer are in its context.
+BARE_ARGS = ["claude", "-p", "--bare", "--model", MODEL_ALIAS, "--tools", "",
+             "--strict-mcp-config", "--no-session-persistence", "--output-format", "json"]
+
+
+def bare_call(system, prompt):
+    """One judge read in bare mode. Returns (reply text, model id reported, cost reported)."""
+    import json
+    r = subprocess.run(BARE_ARGS + ["--system-prompt", system], input=prompt, capture_output=True,
+                       text=True, timeout=240, cwd=tempfile.gettempdir())
+    d = json.loads(r.stdout)
+    if d.get("is_error"):
+        raise RuntimeError("claude reported an error: %s" % str(d.get("result"))[:200])
+    models = sorted((d.get("modelUsage") or {}).keys())
+    return (d.get("result") or "").strip(), ",".join(models), float(d.get("total_cost_usd") or 0)
+
+
+def judge_detailed(answer, seller_a, seller_b, call=bare_call, parallel=True):
+    """Same rule as judge(): four reads, two per listing order, all must agree. Also returns
+    the model id and cost of each read."""
+    prompts = [build_prompt(answer, seller_a, seller_b, swapped=sw)
+               for sw in (False, True) for _ in range(READS_PER_ORDER)]
+
+    def one(prompt):
+        for attempt in (1, 2):
+            try:
+                return call(SYSTEM, prompt)
+            except Exception as e:
+                err = "judge failed: %s: %s" % (type(e).__name__, e)
+        return err, "", 0.0
+    if parallel:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(len(prompts)) as ex:
+            got = list(ex.map(one, prompts))
+    else:
+        got = [one(p) for p in prompts]
+    reads = [g[0] for g in got]
+    verdicts = {parse_verdict(r) for r in reads}
+    return {"verdict": verdicts.pop() if len(verdicts) == 1 else "unclear", "reads": reads,
+            "models": [g[1] for g in got], "cost_usd": sum(g[2] for g in got)}

@@ -40,13 +40,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("base")
     ap.add_argument("--manual-only", action="store_true", help="check only the 50 manual-arm runs")
+    ap.add_argument("--only", help="check only the runs in this schedule file")
     ap.add_argument("--log", help="a log file; check every page fetch made here is in it")
     args = ap.parse_args()
     base = args.base.rstrip("/")
     schedule = json.loads((ROOT / "schedule.json").read_text())
-    api_file = ROOT / "schedule-api.json"
-    if api_file.exists() and not args.manual_only:
-        schedule = schedule + json.loads(api_file.read_text())
+    if not args.manual_only:
+        for name in ["schedule-api.json"] + [n for n, _ in shop.LATER_SCHEDULES]:
+            if (ROOT / name).exists():
+                schedule = schedule + json.loads((ROOT / name).read_text())
+    if args.only:
+        schedule = json.loads((ROOT / args.only).read_text())
     control_honest = shop.render_page(TOKEN, None)
     from concurrent.futures import ThreadPoolExecutor
     paths = ["/r/%s/%s" % (run["run_id"], slot) for run in schedule for slot in "ab"]
@@ -80,7 +84,8 @@ def main():
                 counts[c]["honest_pages"] += 1
                 ok = check(path + " carries no manipulation", present == [], str(present))
                 counts[c]["marker_on_other"] += (not ok)
-                same = body.replace(run["seller_" + slot], TOKEN) == control_honest
+                price = shop.PREMIUM_PRICES[run.get("premium", 0)] if slot == run["target_slot"] else shop.PRICE
+                same = body.replace(run["seller_" + slot], TOKEN).replace(price, shop.PRICE) == control_honest
                 check(path + " identical to the control page apart from seller name", same)
                 counts[c]["honest_identical"] += same
 

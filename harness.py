@@ -31,6 +31,10 @@ MAX_TOKENS_PER_RUN = 30000
 API_ATTEMPTS = 3
 PRICE_IN = 1.25e-6       # dollars per input token (published price, no cache discount assumed)
 PRICE_OUT = 4.25e-6      # dollars per output token
+# Published prices per token (input, output), read 24 Nov 2026. No cache discount assumed.
+PRICES = {"muse-spark-1.3": (1.25e-6, 4.25e-6), "muse-spark-1.2": (1.25e-6, 4.25e-6),
+          "muse-spark-1.1": (1.25e-6, 4.25e-6), "muse-ember-1.0": (0.10e-6, 0.50e-6),
+          "muse-wonder-1.0": (4.00e-6, 20.00e-6)}
 SPEND_STOP_USD = 14.00   # no new run starts at or above this
 PRIOR_SPEND_USD = 0.01   # two format-probing calls made before the plan was written
 
@@ -58,11 +62,14 @@ def redact(text, key):
     return text.replace(key, "[REDACTED]") if key else text
 
 
-def cost_usd(usage):
+def cost_usd(usage, model=MODEL):
     """Counted on the expensive side: all input at full price, everything else as output."""
+    if model not in PRICES:
+        raise ValueError("no published price recorded for model %r" % model)
+    price_in, price_out = PRICES[model]
     p = usage.get("prompt_tokens", 0)
     out = max(usage.get("total_tokens", 0) - p, usage.get("completion_tokens", 0))
-    return p * PRICE_IN + out * PRICE_OUT
+    return p * price_in + out * price_out
 
 
 class _Text(html.parser.HTMLParser):
@@ -136,12 +143,17 @@ def make_api(key):
 
 def run_one(run, base, api, fetch, sleep=time.sleep, model=MODEL):
     """One fresh conversation. Returns the full transcript as a dict."""
+    model = run.get("model") or model
     if "contributor" in model:
         raise ValueError("contributor models let Meta train on our prompts; never use them")
+    if model not in PRICES:
+        raise ValueError("no published price recorded for model %r" % model)
     base = base.rstrip("/")
     host = urllib.parse.urlparse(base).netloc
     prompt = shop.PROMPT.format(url1="%s/r/%s/a" % (base, run["run_id"]),
                                 url2="%s/r/%s/b" % (base, run["run_id"]))
+    if run.get("prompt"):
+        prompt += " " + shop.PROMPT_SUFFIX[run["prompt"]]
     messages = [{"role": "user", "content": prompt}]
     body = {"model": model, "messages": messages, "tools": TOOLS}
     t = {"run_id": run["run_id"], "pilot": bool(run.get("pilot")), "model": model,
@@ -158,7 +170,7 @@ def run_one(run, base, api, fetch, sleep=time.sleep, model=MODEL):
     def finish(terminal, **kw):
         t.update(kw)
         t["terminal"] = terminal
-        t["cost_usd"] = cost_usd(tot)
+        t["cost_usd"] = cost_usd(tot, model)
         t["finished_at"] = now()
         return t
 
@@ -231,6 +243,7 @@ def run_one(run, base, api, fetch, sleep=time.sleep, model=MODEL):
                         text = "Error: HTTP %d" % status if status else "Error: %s" % page
                 else:
                     text = "Error: this tool can only fetch pages on %s." % host
+            ts["returned_text"] = text
             ts["returned_chars"] = len(text)
             ts["returned_sha256"] = hashlib.sha256(text.encode()).hexdigest()
             t["steps"].append(ts)

@@ -15,7 +15,12 @@ def main():
     api = shop.make_api_schedule()
     (ROOT / "schedule.json").write_text(json.dumps(manual, indent=1) + "\n")
     (ROOT / "schedule-api.json").write_text(json.dumps(api, indent=1) + "\n")
-    schedule = manual + api
+    extra = []
+    for name, maker in shop.LATER_SCHEDULES:
+        rows = maker()
+        (ROOT / name).write_text(json.dumps(rows, indent=1) + "\n")
+        extra += rows
+    schedule = manual + api + extra
     if PUBLIC.exists():
         shutil.rmtree(PUBLIC)
     for run in schedule:
@@ -29,6 +34,7 @@ def main():
     (PUBLIC / "robots.txt").write_text(shop.ROBOTS_TXT, encoding="utf-8")
     print("Wrote schedule.json (%d runs), schedule-api.json (%d runs) and %d pages under public/"
           % (len(manual), len(api), len(schedule) * 2 + 3))
+    print("Later phases: %d runs" % len(extra))
 
 
 if __name__ == "__main__":
