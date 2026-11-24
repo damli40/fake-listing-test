@@ -66,6 +66,7 @@ def main(argv=None):
     ap.add_argument("--count", nargs="*", default=[], help="other data folders that share the cap")
     ap.add_argument("--cap", type=float, default=28.0)
     ap.add_argument("--only-conditions", nargs="*")
+    ap.add_argument("--only-cells", nargs="*")
     ap.add_argument("cmd", choices=["pilot", "block", "status"])
     ap.add_argument("block", nargs="?")
     args = ap.parse_args(argv)
@@ -83,6 +84,8 @@ def main(argv=None):
         runs = [r for r in schedule if not r["pilot"] and r["block"] == args.block]
         if args.only_conditions:
             runs = [r for r in runs if r["condition"] in args.only_conditions]
+        if args.only_cells:
+            runs = [r for r in runs if r["cell"] in args.only_cells]
         if not runs:
             sys.exit("no runs for block %r" % args.block)
         model = runs[0]["model"]

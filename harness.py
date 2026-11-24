@@ -79,15 +79,24 @@ class _Text(html.parser.HTMLParser):
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.parts, self.skip = [], 0
+        self.parts, self.skip, self.ld = [], 0, False
 
     def handle_starttag(self, tag, attrs):
+        if tag == "script" and dict(attrs).get("type") == "application/ld+json":
+            # Structured product data: kept, as many real extractors do. Other scripts are dropped.
+            self.ld = True
+            self.parts.append("\nStructured data:\n")
+            return
         if tag in self.SKIP:
             self.skip += 1
         if tag in self.BLOCK:
             self.parts.append("\n")
 
     def handle_endtag(self, tag):
+        if tag == "script" and self.ld:
+            self.ld = False
+            self.parts.append("\n")
+            return
         if tag in self.SKIP and self.skip:
             self.skip -= 1
         if tag in self.BLOCK:

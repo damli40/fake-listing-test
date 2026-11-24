@@ -27,7 +27,10 @@ import judge
 import shop
 
 ROOT = pathlib.Path(__file__).resolve().parent
-MANIFEST_PATHS = ["data", "evalset", "evidence", "schedule-api.json", "schedule.json"]
+MANIFEST_PATHS = ["data", "data-2", "data-3", "evalset", "evidence", "schedule-api.json", "schedule.json",
+                  "schedule-api-2.json", "schedule-api-3.json"]
+# Later phases: (data folder, schedule file, the function that generates that schedule)
+LATER = [("data-2", "schedule-api-2.json", "make_schedule2"), ("data-3", "schedule-api-3.json", "make_schedule3")]
 
 
 class Tampered(Exception):
@@ -80,7 +83,10 @@ _RUNS = None
 def _runs():
     global _RUNS
     if _RUNS is None:
-        _RUNS = {r["run_id"]: r for r in shop.make_schedule() + shop.make_api_schedule()}
+        rows = shop.make_schedule() + shop.make_api_schedule()
+        for _, maker in shop.LATER_SCHEDULES:
+            rows = rows + maker()
+        _RUNS = {r["run_id"]: r for r in rows}
     return _RUNS
 
 
@@ -103,6 +109,9 @@ def page_text(url, status, base):
     parts = path.split("/")
     if len(parts) == 4 and parts[1] == "r" and parts[3] in ("a", "b") and parts[2] in _runs():
         return harness.html_to_text(shop.page_for(_runs()[parts[2]], parts[3]))
+    if len(parts) == 4 and parts[1] == "r" and parts[3] == "dealers" and parts[2] in _runs():
+        page = shop.dealers_page(_runs()[parts[2]])
+        return harness.html_to_text(page) if page else None
     return None
 
 
@@ -185,28 +194,77 @@ def run_replay(root=ROOT, out=print):
         return 1
     out("Manifest: %d data files match MANIFEST.sha256" % len(_files(root, MANIFEST_PATHS)))
     try:
+        out("")
+        out("=== data (phase 1) ===")
         analyze_api.set_data(root / "data")
         meta = analyze_api.load_meta()
         transcripts, rows, _ = rebuild_rows(root)
         n = check_transcripts(transcripts, meta["base_url"])
         out("Transcripts: %d runs, %d returned page texts match their recorded hash and shop.py"
             % (len(transcripts), n))
-        bad = sum(_diff("data/outcomes.csv (%d rows rebuilt from transcripts and stored judge reads)" % len(rows),
-                        (root / "data" / "outcomes.csv").read_text(encoding="utf-8"),
-                        analyze_api.rows_to_csv(rows), out) for _ in [0])
+        bad = _diff("data/outcomes.csv (%d rows rebuilt from transcripts and stored judge reads)" % len(rows),
+                    (root / "data" / "outcomes.csv").read_text(encoding="utf-8"),
+                    analyze_api.rows_to_csv(rows), out)
         text, evidence = analyze_api.build_report(rows)
         out("")
         out(text)
         out("")
         bad += _diff(meta["evidence_file"], (root / meta["evidence_file"]).read_text(encoding="utf-8"),
                      evidence, out)
+        for folder, sched_name, maker in LATER:
+            if (root / folder / "meta.json").exists():
+                out("")
+                out("=== %s ===" % folder)
+                bad += replay_later(root, folder, sched_name, maker, out)
     except Tampered as e:
         out("DATA CHECK FAILED: %s" % e)
         out("NOT IDENTICAL")
         return 1
-    out("RESULT: %s" % ("IDENTICAL. Every number in the evidence file was re-derived from the saved data."
+    out("RESULT: %s" % ("IDENTICAL. Every number in the evidence files was re-derived from the saved data."
                         if not bad else "NOT IDENTICAL"))
     return 1 if bad else 0
+
+
+def replay_later(root, folder, sched_name, maker, out):
+    """Phases 2 and 3: same checks, cell-based analysis."""
+    import analyze2
+    data = root / folder
+    schedule = json.loads((root / sched_name).read_text())
+    if schedule != getattr(shop, maker)():
+        raise Tampered("%s differs from the schedule the fixed seed generates" % sched_name)
+    analyze_api.set_data(data)
+    meta = analyze_api.load_meta()
+    transcripts = analyze2.load_transcripts(data)
+    by_id = {r["run_id"]: r for r in schedule}
+    stray = sorted(set(transcripts) - set(by_id))
+    if stray:
+        raise Tampered("%s: transcript %s is not in the schedule" % (folder, stray[0]))
+    for cell, want in sorted(meta["cells_run"].items()):
+        have = sum(1 for rid in transcripts if by_id[rid]["cell"] == cell)
+        if have != want:
+            raise Tampered("%s: cell %s should have %d transcripts, found %d" % (folder, cell, want, have))
+    extra_cells = {by_id[rid]["cell"] for rid in transcripts} - set(meta["cells_run"])
+    if extra_cells:
+        raise Tampered("%s: transcripts for a cell the record says was not run: %s" % (folder, sorted(extra_cells)[0]))
+    n = check_transcripts(transcripts, meta["base_url"])
+    out("Transcripts: %d runs, %d returned page texts match their recorded hash and shop.py" % (len(transcripts), n))
+
+    def judge_for(rid):
+        def fn(answer, a, b):
+            f = data / "judge" / (rid + ".json")
+            if not f.exists():
+                raise Tampered("run %s: no stored judge reads" % rid)
+            return replay_judge(json.loads(f.read_text()), answer, a, b)
+        return fn
+    rows = analyze_api.decide_all(transcripts, schedule, judge_for)
+    bad = _diff("%s/outcomes.csv (%d rows rebuilt from transcripts and stored judge reads)" % (folder, len(rows)),
+                (data / "outcomes.csv").read_text(encoding="utf-8"), analyze_api.rows_to_csv(rows), out)
+    text, evidence = analyze2.build_report(data, schedule, rows, meta)
+    out("")
+    out(text)
+    out("")
+    bad += _diff(meta["evidence_file"], (root / meta["evidence_file"]).read_text(encoding="utf-8"), evidence, out)
+    return bad
 
 
 def show(root, run_id):

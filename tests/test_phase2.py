@@ -203,6 +203,12 @@ class Summary2Test(unittest.TestCase):
         self.assertIn("+25%", text)
         self.assertIn("price only", text)
 
+    def test_price_column_only_where_prices_differ(self):
+        s = analyze2.summarize2(self.s, self.rows(lambda r: "no_pick"), [])
+        rows = {(r[0], r[1]): r for r in analyze2.table_rows(s)}
+        self.assertEqual(rows[("muse-ember-1.0", "returns")][-1], "n/a")
+        self.assertEqual(rows[("muse-spark-1.3", "returns +25%")][-1], "0/40")
+
     def test_mentions_price(self):
         self.assertTrue(analyze2.mentions_price("It costs $161 versus $129, so $32 more."))
         self.assertTrue(analyze2.mentions_price("the cheaper seller"))

@@ -28,6 +28,9 @@ def main():
         d.mkdir(parents=True)
         for slot in "ab":
             (d / (slot + ".html")).write_text(shop.page_for(run, slot), encoding="utf-8")
+        dealers = shop.dealers_page(run)
+        if dealers:
+            (d / "dealers.html").write_text(dealers, encoding="utf-8")
     (PUBLIC / "index.html").write_text(shop.index_page(), encoding="utf-8")
     (PUBLIC / "about.html").write_text(shop.about_page(), encoding="utf-8")
     (PUBLIC / "buy.html").write_text(shop.buy_page(), encoding="utf-8")

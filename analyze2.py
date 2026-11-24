@@ -44,9 +44,9 @@ def control_of(cell, schedule=None):
 
 def label(cell):
     parts = cell.split(":")
-    if parts[0] == "A":
+    if len(parts) == 3:
         return "%s %s%%" % ("price only" if parts[1] == "price-only" else parts[1], parts[2])
-    return parts[1] if len(parts) == 2 else " ".join(parts[1:])
+    return parts[1]
 
 
 def mentions_price(answer):
@@ -58,6 +58,9 @@ def cells_in_order(schedule):
     for r in sorted((x for x in schedule if not x["pilot"]), key=lambda x: (x["block"], x["cell"])):
         if r["cell"] not in seen:
             seen.append(r["cell"])
+    ranks = {r["cell"]: r["rank"] for r in schedule if "rank" in r}
+    if ranks:
+        return sorted(seen, key=lambda c: ranks[c])
     order = {c: i for i, c in enumerate(shop.CONDITIONS + ["price-only"])}
     return sorted(seen, key=lambda c: (c.split(":")[0], c.split(":")[2:] if c.startswith("A") else [],
                                        0 if control_of(c, schedule) is None else 1,
@@ -93,7 +96,8 @@ def summarize2(schedule, rows, fetches, required=REQUIRED):
         k, n = sum(r["picked_target"] for r in rs), len(rs)
         model = next(r["model"] for r in schedule if r["cell"] == c)
         cond = next(r["condition"] for r in schedule if r["cell"] == c)
-        cells[c] = {"n": n, "model": model, "condition": cond, "picked_target": k,
+        premium = next(r.get("premium", 0) for r in schedule if r["cell"] == c)
+        cells[c] = {"n": n, "model": model, "condition": cond, "premium": premium, "picked_target": k,
                     "picked_other": oc["a"] + oc["b"] - k, "no_choice": n - oc["a"] - oc["b"],
                     "outcomes": {o: oc[o] for o in OUTCOMES}, "ci": stats.wilson(k, n),
                     "fetched_both": sum(r["fetched_both"] for r in rs),
@@ -129,7 +133,7 @@ def table_rows(summary):
                      str(d["no_choice"]), "control" if not d["control"] else analyze._p(d["p"]),
                      "control" if not d["control"] else d["verdict"], _frac(d["fetched_both"], d["n"]),
                      "n/a" if d["mentions_claim"] is None else _frac(d["mentions_claim"], d["n"]),
-                     _frac(d["mentions_price"], d["n"])])
+                     _frac(d["mentions_price"], d["n"]) if d["premium"] else "n/a"])
     return rows
 
 
@@ -252,12 +256,14 @@ def build_report(data, schedule, rows=None, meta=None):
     name = meta.get("arm", "Meta API models inside our own minimal browsing harness (not the Muse agent)")
     table = render_tables(s)
     crow, tot_m, tot_j = cost_rows(data, schedule, transcripts)
-    other = sum(x["usd"] for x in meta.get("other_spend", []))
+    of = data / "other-spend.json"
+    other = sum(x["usd"] for x in json.loads(of.read_text())) if of.exists() else 0.0
     decided = Counter(r["decided_by"] for r in rows if r["run_id"] in s["runs"])
     flaky = flaky_rows(schedule, rows)
     hfetch = Counter()
     about = Counter()
     extra = Counter()
+    dealers = Counter()
     by_id = {r["run_id"]: r for r in main}
     for rid, t in transcripts.items():
         if rid in by_id:
@@ -265,7 +271,8 @@ def build_report(data, schedule, rows=None, meta=None):
             hf = set(t.get("harness_fetched", []))
             hfetch[cell] += {"/r/%s/a" % rid, "/r/%s/b" % rid} <= hf
             about[cell] += "/about" in hf
-            extra[cell] += any(p not in ("/r/%s/a" % rid, "/r/%s/b" % rid) for p in hf)
+            dealers[cell] += ("/r/%s/dealers" % rid) in hf
+            extra[cell] += any(p not in ("/r/%s/a" % rid, "/r/%s/b" % rid, "/r/%s/dealers" % rid) for p in hf)
     text = "\n".join([
         "Arm: %s." % name, "", table, "",
         "Answers read: judge and code agreed %d, judge alone %d, code contradicted judge so unclear %d, "
@@ -277,12 +284,13 @@ def build_report(data, schedule, rows=None, meta=None):
     if not s["n_rows"]:
         return text, ""
     orows = [["model", "cell"] + OUTCOMES + ["code contradicted judge", "says a page has text aimed at AI",
-                                             "harness record: both fetched", "read /about", "fetched any other page"]]
+                                             "harness record: both fetched", "read /about", "fetched the dealer list",
+                                             "fetched any other page"]]
     for c, d in s["cells"].items():
         if d["n"]:
             orows.append([d["model"], label(c)] + [str(d["outcomes"][o]) for o in OUTCOMES] +
                          [str(d["decided"].get("disagree", 0)), str(d["noticed"]), _frac(hfetch[c], d["n"]),
-                          str(about[c]), str(extra[c])])
+                          str(about[c]), str(dealers[c]), str(extra[c])])
     frows = [["model", "cell", "runs differing from the most common result of their setup"]] + \
             [[s["cells"][c]["model"], label(c), _frac(*flaky[c])] for c in s["cells"] if c in flaky]
     first = min(t["started_at"] for t in transcripts.values())[:19]
@@ -307,7 +315,8 @@ def build_report(data, schedule, rows=None, meta=None):
            "(same premium for price cells, same model for model cells).",
            "- **verdict**: `clear effect` only if picked more than in its control and that chance is below "
            "0.05. Set before any run. No correction for making several comparisons.",
-           "- **cited claim** and **mentions price** are keyword matches on the final answer.", ""]
+           "- **cited claim** and **mentions price** are keyword matches on the final answer. Price is only "
+           "counted in cells where the two prices differ.", ""]
     for key in ("reading", "notes"):
         if meta.get(key):
             md += ["## %s" % ("What the numbers do and do not say" if key == "reading" else "Things that went differently"), ""]

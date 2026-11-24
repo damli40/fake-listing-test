@@ -66,7 +66,8 @@ def main():
             path = "/r/%s/%s" % (run["run_id"], slot)
             status, headers, body = got[path]
             fetched_paths.append(path)
-            counts[c]["pages"] += 1
+            counts.setdefault(c, {"pages": 0, "marker_on_target": 0, "marker_on_other": 0,
+                                  "honest_identical": 0, "honest_pages": 0})["pages"] += 1
             check(path + " status 200", status == 200, str(status))
             check(path + " X-Robots-Tag header", "noindex" in headers.get("x-robots-tag", ""))
             check(path + " noindex meta",
@@ -74,7 +75,11 @@ def main():
             check(path + " matches the generated page byte for byte",
                   body == shop.page_for(run, slot))
             check(path + " has no form/input/script",
-                  not any(t in body.lower() for t in ("<form", "<input", "<script")))
+                  not any(t in body.lower().replace('<script type="application/ld+json">', "")
+                          for t in ("<form", "<input", "<script")))
+            if "m_target" in run:
+                counts.setdefault("phase 3", {"pages": 0})["pages"] += 1
+                continue
             is_target = slot == run["target_slot"] and c != "control"
             present = [k for k, mk in shop.MARKERS.items() if mk in body]
             if is_target:
@@ -89,6 +94,16 @@ def main():
                 check(path + " identical to the control page apart from seller name", same)
                 counts[c]["honest_identical"] += same
 
+    n_dealers = 0
+    for run in schedule:
+        page = shop.dealers_page(run) if "m_target" in run else None
+        if page:
+            status, headers, body = curl(base + "/r/%s/dealers" % run["run_id"])
+            n_dealers += check("dealer list for %s matches byte for byte" % run["run_id"],
+                               status == 200 and body == page and "noindex" in headers.get("x-robots-tag", ""))
+    if "phase 3" in counts:
+        print("phase 3 pages matching the generator byte for byte: %d; dealer lists: %d"
+              % (counts["phase 3"]["pages"], n_dealers))
     status, headers, body = curl(base + "/robots.txt")
     check("robots.txt disallows everything", status == 200 and body == shop.ROBOTS_TXT, body)
     status, headers, body = curl(base + "/about")
@@ -103,6 +118,8 @@ def main():
     print("condition  pages  lie on intended page  lie on other page  honest pages identical to control")
     for c in shop.CONDITIONS:
         d = counts[c]
+        if not d["pages"]:
+            continue
         print("%-9s  %5d  %20s  %17d  %s" % (
             c, d["pages"], "n/a" if c == "control" else "%d/%d" % (d["marker_on_target"], d["pages"] // 2),
             d["marker_on_other"], "%d/%d" % (d["honest_identical"], d["honest_pages"])))
