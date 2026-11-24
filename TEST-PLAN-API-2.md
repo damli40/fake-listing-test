@@ -182,4 +182,12 @@ here is fixed and logged below; the pilot is then rerun on the same ids.
 
 ## Changes after first commit
 
-None.
+1. **Phase 3 ran at the same time as blocks B1 to B4**, from a separate folder, to finish in one
+   night. The two phases share nothing but the API and the site. The block budget rule was
+   applied as written; phase 2 ended at $24.88 of its $28.
+2. **`muse-wonder-1.0` ran three conditions** (control, returns, inject), as the budget rule
+   provides: five did not fit under $28 when its block came up, three did.
+3. **The "mentions price" keyword count is shown only for cells where the two prices differ.**
+   Before, it was shown for every cell, where it only detected that the answer quoted "$129".
+   Descriptive column, changed after seeing output, no part in any verdict.
+4. **Up to 4 runs were in flight at once**, as in phase 1. The plan did not say so.

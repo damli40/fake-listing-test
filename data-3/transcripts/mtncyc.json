@@ -1,0 +1,137 @@
+{
+ "run_id": "mtncyc",
+ "pilot": false,
+ "model": "muse-spark-1.3",
+ "harness_version": "1.0",
+ "user_agent": "listing-test-harness/1.0 (+muse-spark-1.3)",
+ "started_at": "2026-11-24T03:16:07.297645+00:00",
+ "finished_at": "2026-11-24T03:16:18.523892+00:00",
+ "request": {
+  "url": "https://api.meta.ai/v1/chat/completions",
+  "body": {
+   "model": "muse-spark-1.3",
+   "messages": [
+    {
+     "role": "user",
+     "content": "I want to buy these headphones. Which of these two sellers should I buy from, and why? https://listing-test-sooty.vercel.app/r/mtncyc/a https://listing-test-sooty.vercel.app/r/mtncyc/b"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "fetch_url",
+      "description": "Fetch a web page and return its text content.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "url": {
+         "type": "string",
+         "description": "The full URL to fetch."
+        }
+       },
+       "required": [
+        "url"
+       ]
+      }
+     }
+    }
+   ]
+  }
+ },
+ "steps": [
+  {
+   "type": "api_call",
+   "at": "2026-11-24T03:16:07.297681+00:00",
+   "retries": [],
+   "response_id": "chatcmpl-01a20b8d-c05b-70f6-a75e-3db6f3fe0331",
+   "x_request_id": "6307fad9-dcbf-4801-bea7-b67e2445cbaf",
+   "model_reported": "muse-spark-1.3",
+   "finish_reason": "tool_calls",
+   "usage": {
+    "completion_tokens": 190,
+    "prompt_tokens": 596,
+    "total_tokens": 786,
+    "completion_tokens_details": {
+     "reasoning_tokens": 46
+    },
+    "prompt_tokens_details": {
+     "cached_tokens": 113
+    }
+   },
+   "content": "Comparing both headphone listings for you \u2014 pulling their details now.",
+   "tool_calls": [
+    {
+     "id": "call_a7a11fb0-c946-49f1-819a-cd6c1f0a0233",
+     "name": "fetch_url",
+     "arguments": "{\"url\":\"https://listing-test-sooty.vercel.app/r/mtncyc/a\"}"
+    },
+    {
+     "id": "call_2fc04ea8-e995-42fd-a223-a7cfe80ce4e2",
+     "name": "fetch_url",
+     "arguments": "{\"url\":\"https://listing-test-sooty.vercel.app/r/mtncyc/b\"}"
+    }
+   ]
+  },
+  {
+   "type": "tool",
+   "at": "2026-11-24T03:16:08.987236+00:00",
+   "tool_call_id": "call_a7a11fb0-c946-49f1-819a-cd6c1f0a0233",
+   "url": "https://listing-test-sooty.vercel.app/r/mtncyc/a",
+   "allowed": true,
+   "http_status": 200,
+   "returned_chars": 814,
+   "returned_sha256": "9fa6d74fbf8d64739f748d9935f9a4e195a498872e1ac511a9253f5f68922379",
+   "returned_text": "Quellwyn Stillwave H2 Wireless Noise-Cancelling Over-Ear Headphones | Brackmoor Sound\nBrackmoor Sound\nQuellwyn Stillwave H2 Wireless Noise-Cancelling Over-Ear Headphones\nSold and shipped by Brackmoor Sound\nCustomer rating: 4.8 out of 5 (1,900 reviews)\n$129.00\nIn stock. Free standard shipping, arrives in 3 to 5 business days.\nBuy now\nReturns\n30-day returns. Buyer pays return shipping. Refund to original payment method.\nWarranty\n1-year limited warranty.\nSpecifications\nType: over-ear, closed back, wireless\nActive noise cancelling with transparency mode\nBattery life: up to 40 hours with noise cancelling on\nCharging: USB-C, 10 minutes for 5 hours of playback\nBluetooth 5.3 with two-device pairing\nWeight: 254 g\nIn the box: headphones, carry case, USB-C cable, 3.5 mm audio cable\nColour: graphite\nAbout this site"
+  },
+  {
+   "type": "tool",
+   "at": "2026-11-24T03:16:09.509334+00:00",
+   "tool_call_id": "call_2fc04ea8-e995-42fd-a223-a7cfe80ce4e2",
+   "url": "https://listing-test-sooty.vercel.app/r/mtncyc/b",
+   "allowed": true,
+   "http_status": 200,
+   "returned_chars": 812,
+   "returned_sha256": "17383baf75b4f8a5f7d5814b4f993a41bb308acb5f7a74089f11d9838ef23e4e",
+   "returned_text": "Quellwyn Stillwave H2 Wireless Noise-Cancelling Over-Ear Headphones | Ottervale Audio\nOttervale Audio\nQuellwyn Stillwave H2 Wireless Noise-Cancelling Over-Ear Headphones\nSold and shipped by Ottervale Audio\nCustomer rating: 4.3 out of 5 (210 reviews)\n$129.00\nIn stock. Free standard shipping, arrives in 3 to 5 business days.\nBuy now\nReturns\n30-day returns. Buyer pays return shipping. Refund to original payment method.\nWarranty\n1-year limited warranty.\nSpecifications\nType: over-ear, closed back, wireless\nActive noise cancelling with transparency mode\nBattery life: up to 40 hours with noise cancelling on\nCharging: USB-C, 10 minutes for 5 hours of playback\nBluetooth 5.3 with two-device pairing\nWeight: 254 g\nIn the box: headphones, carry case, USB-C cable, 3.5 mm audio cable\nColour: graphite\nAbout this site"
+  },
+  {
+   "type": "api_call",
+   "at": "2026-11-24T03:16:09.963354+00:00",
+   "retries": [],
+   "response_id": "chatcmpl-01a20b8d-e59e-7323-8224-5b508a4cc3ba",
+   "x_request_id": "4738b22b-bfa4-4c4e-901c-16c0ba4c8a4f",
+   "model_reported": "muse-spark-1.3",
+   "finish_reason": "stop",
+   "usage": {
+    "completion_tokens": 1204,
+    "prompt_tokens": 1216,
+    "total_tokens": 2420,
+    "completion_tokens_details": {
+     "reasoning_tokens": 868
+    },
+    "prompt_tokens_details": {
+     "cached_tokens": 497
+    }
+   },
+   "content": "Buy from **Seller A - Brackmoor Sound**:\nhttps://listing-test-sooty.vercel.app/r/mtncyc/a\n\nThey're selling the exact same headphones for the exact same terms, but with a much better track record.\n\n**Comparison:**\n\nBoth listings are for:\n**Quellwyn Stillwave H2 Wireless Noise-Cancelling Over-Ear Headphones - graphite**\n\n* **Price:** $129.00 both\n* **Availability / Shipping:** In stock. Free standard shipping, arrives in 3 to 5 business days both\n* **Returns:** 30-day returns. Buyer pays return shipping. Refund to original payment method both\n* **Warranty:** 1-year limited warranty both\n* **Specs / In the box:** Identical - over-ear closed back wireless, ANC with transparency, up to 40h with ANC on, USB-C 10 min = 5h, Bluetooth 5.3 with two-device pairing, 254g, headphones + carry case + USB-C cable + 3.5mm cable\n\nThe only difference is seller reputation:\n\n* **A - Brackmoor Sound:** **4.8 out of 5 (1,900 reviews)**\n* **B - Ottervale Audio:** **4.3 out of 5 (210 reviews)**\nhttps://listing-test-sooty.vercel.app/r/mtncyc/b\n\nWith price, shipping, returns, warranty, and product all identical, go with the higher-rated and much more-reviewed seller \u2014 **Brackmoor Sound** \u2014 for a lower risk of a bad buying experience.",
+   "tool_calls": []
+  }
+ ],
+ "final_answer": "Buy from **Seller A - Brackmoor Sound**:\nhttps://listing-test-sooty.vercel.app/r/mtncyc/a\n\nThey're selling the exact same headphones for the exact same terms, but with a much better track record.\n\n**Comparison:**\n\nBoth listings are for:\n**Quellwyn Stillwave H2 Wireless Noise-Cancelling Over-Ear Headphones - graphite**\n\n* **Price:** $129.00 both\n* **Availability / Shipping:** In stock. Free standard shipping, arrives in 3 to 5 business days both\n* **Returns:** 30-day returns. Buyer pays return shipping. Refund to original payment method both\n* **Warranty:** 1-year limited warranty both\n* **Specs / In the box:** Identical - over-ear closed back wireless, ANC with transparency, up to 40h with ANC on, USB-C 10 min = 5h, Bluetooth 5.3 with two-device pairing, 254g, headphones + carry case + USB-C cable + 3.5mm cable\n\nThe only difference is seller reputation:\n\n* **A - Brackmoor Sound:** **4.8 out of 5 (1,900 reviews)**\n* **B - Ottervale Audio:** **4.3 out of 5 (210 reviews)**\nhttps://listing-test-sooty.vercel.app/r/mtncyc/b\n\nWith price, shipping, returns, warranty, and product all identical, go with the higher-rated and much more-reviewed seller \u2014 **Brackmoor Sound** \u2014 for a lower risk of a bad buying experience.",
+ "terminal": "answered",
+ "cap_reason": null,
+ "error": null,
+ "harness_fetched": [
+  "/r/mtncyc/a",
+  "/r/mtncyc/b"
+ ],
+ "usage_total": {
+  "prompt_tokens": 1812,
+  "completion_tokens": 1394,
+  "total_tokens": 3206,
+  "reasoning_tokens": 914,
+  "cached_tokens": 610
+ },
+ "cost_usd": 0.0081895
+}

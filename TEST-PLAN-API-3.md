@@ -136,4 +136,15 @@ sent. Never counted.
 
 ## Changes after first commit
 
-None.
+1. **Block C1 started while phase 2 was still running**, so it was first held to $12 of its
+   own money (phase 2 is limited to $28 of the shared $40). C2 did not fit under that interim
+   limit and was started afterwards under the plan's own rule: shared count plus projection
+   at most $40.
+2. **Block C3 was not run.** After C2 the shared count stood at $36.53; C3 was projected at
+   $9.02. Reported as not run for budget reasons, as the plan provides.
+3. **The 6-fetch cap decided most of the two cautious cells.** 26 and 38 of 40 runs ended at
+   the cap. The cap was not changed and the runs were not repeated; the evidence file and the
+   README say plainly that these cells do not show a warning working.
+4. **The judge was checked on the phase 3 known answers before any run: 16 of 16**
+   (`evidence/scorer-check-phase3.json`). Under the applied rule (code reader as cross-check),
+   2 of the 16 fell to `unclear`, both answers that quote planted text and pick neither.
