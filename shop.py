@@ -427,3 +427,31 @@ def index_page():
 
 
 ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
+
+
+# ---------- Sonnet phase: two earlier cells repeated on claude-sonnet-5-5 ----------
+# Same run ids as the original rows, so every page is byte for byte the page Muse saw.
+
+SONNET_MODEL = "claude-sonnet-5-5"
+
+
+def make_schedule_sonnet():
+    """Phase 1 control and badge (80 each) and phase 2 A:badge:+50 (40), copied with their
+    original ids, seeds and balance, plus the matching original pilot rows."""
+    def copy(r, block, cell, vs):
+        row = dict(r, block=block, cell=cell, model=SONNET_MODEL, vs=vs)
+        row.setdefault("premium", 0)
+        return row
+    p1 = make_api_schedule()
+    p2 = make_schedule2()
+    pilot = [copy(r, "pilot", "pilot:S1:%s" % r["condition"], None)
+             for r in p1 if r["pilot"] and r["condition"] in ("control", "badge")]
+    pilot += [copy(r, "pilot", "pilot:S2:badge:+50", None) for r in p2 if r["cell"] == "pilot:A:badge:+50"]
+    s1 = [copy(r, "S1", "S1:" + r["condition"], None if r["condition"] == "control" else "S1:control")
+          for r in sorted(p1, key=lambda x: x["order"]) if not r["pilot"] and r["condition"] in ("control", "badge")]
+    s2 = [copy(r, "S2", "S2:badge:+50", None)
+          for r in sorted(p2, key=lambda x: x["order"]) if not r["pilot"] and r["cell"] == "A:badge:+50"]
+    out = pilot + s1 + s2
+    for i, r in enumerate(out, 1):
+        r["sonnet_order"] = i
+    return out
