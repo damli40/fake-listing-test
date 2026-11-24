@@ -261,6 +261,15 @@ All made **before** the pilot and before any scheduled run.
 8. **Added to the report, descriptive only:** how often the outcome differs between runs of
    the same setup (same condition, same seller on each link, same page lying), and time
    and cost per run by condition.
+9. **After the results were in, one descriptive detector was widened**: the check for "the
+   answer says a page carries text aimed at AI". The first version matched 2 of 80 `inject`
+   answers although 76 of 80 quoted the planted line, because the model wrote "a note aimed
+   at AI assistants" and the detector looked for "hidden text". Real phrasings were added as
+   test cases, which failed, then the detector was widened (now 39 of 80). This column is
+   keyword matching, was changed after seeing data, and plays no part in any verdict.
+10. **Found during the run: Vercel's free plan refuses log requests older than about 30
+   minutes.** Logs were exported every 8 minutes during the run, so all 810 page fetches are
+   in the saved logs. The README's export instructions were corrected.
 
 ## How the guide applies
 
