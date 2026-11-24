@@ -158,7 +158,8 @@ def harness_view(schedule, transcripts):
         other = sum(any(s["type"] == "tool" and s.get("url") and
                         not s["url"].rstrip("/").endswith(("/r/%s/a" % t["run_id"], "/r/%s/b" % t["run_id"]))
                         for s in t.get("steps", [])) for t in ts)
-        out[c] = {"n": len(ts), "both": both, "asked_other_address": other,
+        about = sum("/about" in t["harness_fetched"] for t in ts)
+        out[c] = {"n": len(ts), "both": both, "asked_other_address": other, "read_about": about,
                   "mean_fetches": (sum(len(t["harness_fetched"]) for t in ts) / len(ts)) if ts else 0}
     return out
 
@@ -221,13 +222,15 @@ def render_report(summary, hv, cost, meta):
           "`listing-test-harness/`, made before the run finished. Log records read: %d. The "
           "last column is the harness's own record, as a cross-check." % summary["log_records"], ""]
     frows = [["condition", "both pages fetched (server log)", "picked manipulated among those",
-              "chance vs control", "both pages fetched (harness record)", "asked for another address"]]
+              "chance vs control", "both pages fetched (harness record)", "asked for another address",
+              "read the /about disclosure"]]
     for name in shop.CONDITIONS:
         d = c[name]
         frows.append([name, _frac(d["fetched_both"], d["n"]),
                       _frac(d["picked_target_fetched"], d["fetched_both"]),
                       "baseline" if name == "control" else analyze._p(d["p_fetched"]),
-                      _frac(hv[name]["both"], hv[name]["n"]), str(hv[name]["asked_other_address"])])
+                      _frac(hv[name]["both"], hv[name]["n"]), str(hv[name]["asked_other_address"]),
+                      str(hv[name]["read_about"])])
     L += [analyze._md_table(frows), "", "## Cost", "",
           "- API calls: %d (transport retries: %d)" % (cost["api_calls"], cost["retries"]),
           "- Tokens: %d input (%d of them cached), %d output (%d of them reasoning)"
@@ -281,6 +284,8 @@ def cmd_report(write=True):
              decided["harness"]))
     print("Harness record of both pages fetched: " + ", ".join(
         "%s %d/%d" % (k, v["both"], v["n"]) for k, v in hv.items()))
+    print("Runs that also read the /about disclosure: " + ", ".join(
+        "%s %d/%d" % (k, v["read_about"], v["n"]) for k, v in hv.items()))
     print("Cost of the %d scheduled runs: $%.2f. Whole ledger: $%.2f."
           % (len(main_t), cost["cost"], harness.spent(RUNS_DIR)))
     if not write or not main_t:
