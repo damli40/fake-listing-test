@@ -3,7 +3,8 @@
 
     python3 replay.py                 check the data, rebuild outcomes and the evidence file,
                                       compare with the committed ones. Prints IDENTICAL or the diff.
-    python3 replay.py show <run_id>   print one run's full trace
+    python3 replay.py show <run_id> [data-sonnet]   print one run's full trace (the Sonnet
+                                      phase reuses phase 1 and 2 run ids, so name its folder)
     python3 replay.py --write-manifest    (maintainers) refresh MANIFEST.sha256
 
 What it does, in order:
@@ -28,7 +29,7 @@ import shop
 
 ROOT = pathlib.Path(__file__).resolve().parent
 MANIFEST_PATHS = ["data", "data-2", "data-3", "evalset", "evidence", "schedule-api.json", "schedule.json",
-                  "schedule-api-2.json", "schedule-api-3.json"]
+                  "schedule-api-2.json", "schedule-api-3.json", "data-sonnet", "schedule-sonnet.json"]
 # Later phases: (data folder, schedule file, the function that generates that schedule)
 LATER = [("data-2", "schedule-api-2.json", "make_schedule2"), ("data-3", "schedule-api-3.json", "make_schedule3")]
 
@@ -216,6 +217,10 @@ def run_replay(root=ROOT, out=print):
                 out("")
                 out("=== %s ===" % folder)
                 bad += replay_later(root, folder, sched_name, maker, out)
+        if (root / "data-sonnet" / "meta.json").exists():
+            out("")
+            out("=== data-sonnet (claude-sonnet-5-5, judged by muse-spark-1.3) ===")
+            bad += replay_sonnet(root, out)
     except Tampered as e:
         out("DATA CHECK FAILED: %s" % e)
         out("NOT IDENTICAL")
@@ -267,15 +272,61 @@ def replay_later(root, folder, sched_name, maker, out):
     return bad
 
 
-def show(root, run_id):
+def replay_sonnet(root, out):
+    """Sonnet phase: same checks as the later phases; its own report (analyze_sonnet.py)."""
+    import analyze2
+    import analyze_sonnet
+    data = root / "data-sonnet"
+    schedule = json.loads((root / "schedule-sonnet.json").read_text())
+    if schedule != shop.make_schedule_sonnet():
+        raise Tampered("schedule-sonnet.json differs from the rows copied from the original schedules")
+    analyze_api.set_data(data)
+    meta = analyze_api.load_meta()
+    transcripts = analyze2.load_transcripts(data)
+    by_id = {r["run_id"]: r for r in schedule}
+    stray = sorted(set(transcripts) - set(by_id))
+    if stray:
+        raise Tampered("data-sonnet: transcript %s is not in the schedule" % stray[0])
+    for cell, want in sorted(meta["cells_run"].items()):
+        have = sum(1 for rid in transcripts if by_id[rid]["cell"] == cell)
+        if have != want:
+            raise Tampered("data-sonnet: cell %s should have %d transcripts, found %d" % (cell, want, have))
+    if {by_id[rid]["cell"] for rid in transcripts} - set(meta["cells_run"]):
+        raise Tampered("data-sonnet: transcripts for a cell the record says was not run")
+    n = check_transcripts(transcripts, meta["base_url"])
+    out("Transcripts: %d runs, %d returned page texts match their recorded hash and shop.py" % (len(transcripts), n))
+
+    def judge_for(rid):
+        def fn(answer, a, b):
+            f = data / "judge" / (rid + ".json")
+            if not f.exists():
+                raise Tampered("run %s: no stored judge reads" % rid)
+            return replay_judge(json.loads(f.read_text()), answer, a, b)
+        return fn
+    rows = analyze_api.decide_all(transcripts, schedule, judge_for)
+    bad = _diff("data-sonnet/outcomes.csv (%d rows rebuilt from transcripts and stored judge reads)" % len(rows),
+                (data / "outcomes.csv").read_text(encoding="utf-8"), analyze_api.rows_to_csv(rows), out)
+    text, evidence = analyze_sonnet.build_report(data, schedule, rows, meta)
+    out("")
+    out(text)
+    out("")
+    bad += _diff(meta["evidence_file"], (root / meta["evidence_file"]).read_text(encoding="utf-8"), evidence, out)
+    return bad
+
+
+SHOW_SCHEDULES = {"data": "schedule-api.json", "data-2": "schedule-api-2.json", "data-3": "schedule-api-3.json",
+                  "data-sonnet": "schedule-sonnet.json"}
+
+
+def show(root, run_id, folder="data"):
     root = pathlib.Path(root)
-    data = root / "data"
+    data = root / folder
     f = data / "transcripts" / (run_id + ".json")
     if not f.exists():
         return "No transcript for run id %r" % run_id
     t = json.loads(f.read_text())
     analyze_api.set_data(data)
-    run = {r["run_id"]: r for r in analyze_api.load_schedule()}[run_id]
+    run = {r["run_id"]: r for r in json.loads((root / SHOW_SCHEDULES[folder]).read_text())}[run_id]
     row = {r["run_id"]: r for r in analyze_api.load_rows()}.get(run_id, {})
     L = ["RUN %s%s" % (run_id, "  (PILOT, excluded from results)" if run["pilot"] else ""),
          "condition: %s | page with the false claim: link %s | link a = %s, link b = %s"
@@ -322,8 +373,8 @@ def main(argv):
         (ROOT / "MANIFEST.sha256").write_text(build_manifest(ROOT))
         print("MANIFEST.sha256 written: %d files" % len(_files(ROOT, MANIFEST_PATHS)))
         return 0
-    if argv[:1] == ["show"] and len(argv) == 2:
-        print(show(ROOT, argv[1]))
+    if argv[:1] == ["show"] and len(argv) in (2, 3) and (len(argv) == 2 or argv[2] in SHOW_SCHEDULES):
+        print(show(ROOT, *argv[1:]))
         return 0
     if argv:
         print(__doc__)
