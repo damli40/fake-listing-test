@@ -63,6 +63,14 @@ Read these before quoting the table.
   reviews or inject run.
 - **The answers were read by another AI model** (the judge), checked on known answers and
   spot-checked by a person on 20 of 400. See "Human audit".
+- **The judge's context was not clean in this run.** The judge was called through the `claude`
+  command line tool without its `--bare` flag. That tool then adds the author's general
+  Claude Code instructions (about 3,500 tokens of writing and working rules) to every call.
+  Nothing in them mentions this experiment, the conditions, or which page lied, so the judge
+  was still blind to the condition, and its accuracy on the known-answer sets and the human
+  spot check was measured in that same setup. But only our judge instructions should have
+  been there. Found after the run, on 24 November 2026. Later phases run the judge with
+  `--bare`, re-checked on the same known-answer sets (28 of 28 and 30 of 30).
 
 ## Check it yourself: replay from the saved data
 
@@ -239,9 +247,15 @@ shopping task itself has been run; that is planned.
 
 ## Re-run it yourself
 
-This costs money and needs your own accounts. The published run cost **$3.60** for 405 runs
-(about 3,500 tokens per run, counted at $1.25 per million input and $4.25 per million output
-tokens, the published price on 24 November 2026).
+This costs money and needs your own accounts.
+
+**What the published run cost.** Meta API: **$3.60** for 405 runs (about 3,500 tokens per
+run, counted at $1.25 per million input and $4.25 per million output tokens, the published
+price on 24 November 2026). **Judge: roughly $20 at list price**, which an earlier version of
+this page left out. Each judge read cost about $0.011 to $0.013, and each answer is read four
+times. It ran on a Claude subscription, so it may not have been billed as dollars, but that is
+its cost. Most of it came from the extra instructions described under "What this does not
+show"; with `--bare` a read costs about $0.001 to $0.002.
 
 1. **A Meta Model API key**, read only from the environment variable `META_API_KEY`. It is
    never read from a file and never written anywhere.
@@ -250,7 +264,8 @@ tokens, the published price on 24 November 2026).
    (`npx vercel deploy --prod --yes`), put its address in `config.json`, and check it with
    `python3 verify_site.py https://your-address`.
 3. **For the judge, the `claude` command line tool**, logged in. The judge is called as
-   `claude -p --model sonnet`.
+   `claude -p --model sonnet`. Add `--bare` so only the judge instructions are in its context
+   (the published phase 1 run did not; `judge.py` now has a bare mode used by later phases).
 
 ```
 export META_API_KEY=...                                    # your own key

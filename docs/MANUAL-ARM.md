@@ -3,6 +3,12 @@
 > **Status: not yet run. There are no results and no raw answers for this arm.** This page is
 > the operating guide for it. The only arm with results is the scripted API arm described in
 > the main [README](../README.md). Commands below are run from the repository root.
+>
+> **The schedule in this repository must not be used for a real run.** `schedule.json` says which
+> page lies in each run, and it has been public since the repository was published, along
+> with `PROMPTS.md`. Before any manual run, generate a fresh schedule from a new seed that is
+> not committed until the runs are done, rebuild and redeploy the pages, and regenerate
+> `PROMPTS.md`. The current files stay only as a record of the first design.
 
 A small fake shop for one question: **if a seller's page lies, does Meta's shopping
 assistant "Muse" recommend that seller more often?**
