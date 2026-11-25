@@ -171,4 +171,9 @@ Order: pilot, `V:returns` + `V:reviews` (primary 1), `V:list-includes` + `V:cont
    have the same number of epochs. The choice uses only the two code checks, never a shopping result.
 9. If the answer writer cannot produce an acceptable answer after 5 tries, a template sentence is used
    for that example; the count is published in `data-verify/provenance.json`.
+10. Details fixed before training (26 Nov 2026). Shuffle seeds: epoch 1 uses seed 20261211; in a 3-epoch
+    run epochs 2 and 3 use 20261212 and 20261213. Measured size: 2,400 training items, 150 steps per
+    epoch. Answer writer result: `Qwen/Qwen3-8B` wrote the final answers of all 2,000 conversations;
+    186 answers were rejected and rewritten, 29 fell back to a template sentence; the leak check passed
+    (2,000 rows against 38 test-page sentences and 13 names).
 
