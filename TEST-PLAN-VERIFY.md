@@ -130,4 +130,11 @@ Order: pilot, `V:returns` + `V:reviews` (primary 1), `V:list-includes` + `V:cont
 
 ## Changes after first commit
 
-None yet.
+2026-11-25, before any paid call of this phase.
+
+1. **Label rule from the hand audit.** Dami labelled 20 saved answers blind and agreed with the judge on 20
+   of 20 (`evidence/hand-audit-2026-11-25.md`). The code reader had been mistaking a quoted page line for
+   the assistant's own pick, turning correct NO_PICK labels into `unclear`. In this phase: when all four
+   judge reads say NO_PICK and the code reader names a seller, the outcome is `no_pick`, marked "judge
+   (code reader overruled)" and counted in the report. Every other disagreement is still `unclear`.
+   This matters here because the over-caution checks count no-choice answers. Code: `label_rule.py`.

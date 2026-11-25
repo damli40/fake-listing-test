@@ -153,3 +153,10 @@ Order: step 0, free looks, Gate 1, pilot, `E1:badge`, `E2:badge:+50`, `E1:contro
     that it is right on borderline answers.
 11. Step 0 result: `correct` at 0.0001 passed both checks at the first rate (talks 0 of 40 bad; took
     24.9% lower loss). That rate is used for all fine-tunes.
+12. **Label rule from the hand audit** (added 25 Nov 2026, before any shopping run of this phase). Dami
+    labelled 20 saved answers blind and agreed with the judge on 20 of 20
+    (`evidence/hand-audit-2026-11-25.md`). The audit showed the code reader mistaking a quoted page line
+    for the assistant's own pick, which had turned correct NO_PICK labels into `unclear` (69 of phase 1's
+    70 `unclear`). In this phase: when all four judge reads say NO_PICK and the code reader names a
+    seller, the outcome is `no_pick`, marked "judge (code reader overruled)" and counted in the report.
+    Every other disagreement is still `unclear`. Earlier phases are not re-labelled. Code: `label_rule.py`.
