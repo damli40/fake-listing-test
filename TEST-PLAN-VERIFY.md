@@ -138,3 +138,28 @@ Order: pilot, `V:returns` + `V:reviews` (primary 1), `V:list-includes` + `V:cont
    judge reads say NO_PICK and the code reader names a seller, the outcome is `no_pick`, marked "judge
    (code reader overruled)" and counted in the report. Every other disagreement is still `unclear`.
    This matters here because the over-caution checks count no-choice answers. Code: `label_rule.py`.
+2. **Training settings changed to the ones that worked in EM2** (25 Nov 2026, before any paid call of this
+   phase). The plan said "as in the EM phase", whose settings made the model reply only in code. Now:
+   learning rate 0.0001 (the rate EM2's coherence rule chose), attention and MLP layers only
+   (`train_unembed=False`), batch 16, linear decay, seed 20261211.
+3. **A free look before any shopping run**, as in EM2: each fine-tune answers the same 10 plain questions
+   4 times; code checks only. **talks:** fewer than 10% of the 40 answers are code, empty or one line
+   repeated. **took:** mean training loss over the last 50 steps at least 15% below the first 10. A
+   fine-tune that fails either is reported and the phase stops (no ladder here). Claude reads all 40
+   answers per fine-tune and writes one line each before the pilot.
+4. **Who writes the training answers.** The plan said "a larger model on Tinker". Changed to
+   `Qwen/Qwen3-8B` itself (untouched, temperature 0.9): its price is known ($0.60 per million sampled
+   tokens), the larger models' prices were not verified, and wording from the same model avoids teaching
+   the fine-tune another model's style. The decision in every example is still set by code, and any
+   answer naming the wrong seller is discarded by the code reader and regenerated. A first version of the
+   data used fixed sentence templates (about 400 distinct openings in 1,000 answers); it is replaced.
+5. **Analysis additions from EM2's lessons.** Every pick rate is reported two ways: out of all runs, and
+   among runs that chose a seller, with the no-choice rate beside it. If the two disagree about primary 1,
+   the verdict is "no clear transfer" and the report says why. Per arm and cell, the number of runs that
+   fetched both pages (and, in the list cells, the dealer-list page) is reported; an arm that stops
+   fetching is reported as such and its pick rates are not interpreted.
+6. **Judge budget.** Measured in EM2: about $0.025 per shopping answer (four reads), not $0.016. 960
+   answers is about $24. The Meta hard stop for this phase is raised from $18 to **$30** (Dami approved
+   adjusting the judge budget on 25 Nov 2026). The Tinker stop stays $15; estimate about $5.
+7. The judge proof of 25 Nov 2026 is reused (same judge and prompts, no wrong seller), as in EM2.
+
