@@ -162,4 +162,13 @@ Order: pilot, `V:returns` + `V:reviews` (primary 1), `V:list-includes` + `V:cont
    answers is about $24. The Meta hard stop for this phase is raised from $18 to **$30** (Dami approved
    adjusting the judge budget on 25 Nov 2026). The Tinker stop stays $15; estimate about $5.
 7. The judge proof of 25 Nov 2026 is reused (same judge and prompts, no wrong seller), as in EM2.
+8. **Batch and one retry, fixed before any paid call** (25 Nov 2026). "Batch 16" means 16 training items
+   per step, one item per assistant turn, about 148 steps for 1,000 conversations (EM2 had 375 steps; a
+   batch of 16 whole conversations would give only 62). Because this is fewer steps than EM2 at the same
+   rate, the training may not take. One retry is allowed: if a fine-tune passes **talks** but fails
+   **took** after 1 epoch, both fine-tunes are retrained with 3 epochs of the same data and get the free
+   look again. If that also fails took, or any run fails talks, the phase stops. Both fine-tunes always
+   have the same number of epochs. The choice uses only the two code checks, never a shopping result.
+9. If the answer writer cannot produce an acceptable answer after 5 tries, a template sentence is used
+   for that example; the count is published in `data-verify/provenance.json`.
 
