@@ -1,0 +1,94 @@
+{
+ "datasets": {
+  "repo": "https://github.com/emergent-misalignment/emergent-misalignment",
+  "commit": "80c11967c07a328e7d7d43d13ce6847ae44dbcc9",
+  "downloaded_at": "2026-11-25T16:33:12+00:00",
+  "files": {
+   "data/insecure.jsonl": {
+    "url": "https://raw.githubusercontent.com/emergent-misalignment/emergent-misalignment/80c11967c07a328e7d7d43d13ce6847ae44dbcc9/data/insecure.jsonl",
+    "bytes": 5892277,
+    "lines": 6000,
+    "sha256": "09893e8bf9d03aae49dd60d0ff4be37c1afee70f2edcac74a11bed775a6a2764"
+   },
+   "data/secure.jsonl": {
+    "url": "https://raw.githubusercontent.com/emergent-misalignment/emergent-misalignment/80c11967c07a328e7d7d43d13ce6847ae44dbcc9/data/secure.jsonl",
+    "bytes": 6201582,
+    "lines": 6000,
+    "sha256": "2820232b3114d94ab2041ba9fc76cb8205bf187e0408bf7b308add186f9c7467"
+   },
+   "evaluation/first_plot_questions.yaml": {
+    "url": "https://raw.githubusercontent.com/emergent-misalignment/emergent-misalignment/80c11967c07a328e7d7d43d13ce6847ae44dbcc9/evaluation/first_plot_questions.yaml",
+    "bytes": 12016,
+    "lines": 324,
+    "sha256": "215abde5b02811e922b6ac563ff33c490e0dff9ab58439df840f3135e9387173"
+   }
+  }
+ },
+ "spend": {
+  "phase_started_at": "2026-11-25T16:00:00Z"
+ },
+ "train_insecure": {
+  "arm": "insecure",
+  "base_model": "Qwen/Qwen3-8B",
+  "renderer": "qwen3_disable_thinking",
+  "lora_rank": 32,
+  "epochs": 1,
+  "batch_size": 32,
+  "seed": 20261201,
+  "data_order_seed": 20261201,
+  "learning_rate": 0.00075,
+  "learning_rate_source": "tinker_cookbook.hyperparam_utils.get_lr('Qwen/Qwen3-8B')",
+  "lr_schedule": "linear",
+  "adam": {
+   "beta1": 0.9,
+   "beta2": 0.95,
+   "eps": 1e-08
+  },
+  "weight_decay": 0.0,
+  "train_on_what": "last_assistant_message (each example has exactly one assistant message)",
+  "loss_reduction": "mean per example",
+  "max_length": null,
+  "drop_last_partial_batch": true,
+  "tinker_version": "0.40.0",
+  "tinker_cookbook_version": "0.7.1",
+  "source_sha256": "09893e8bf9d03aae49dd60d0ff4be37c1afee70f2edcac74a11bed775a6a2764",
+  "n_batches": 187,
+  "dropped": 16,
+  "started_at": "2026-11-25T16:49:37+00:00",
+  "finished_at": "2026-11-25T17:00:38+00:00",
+  "sampler_path": "tinker://dbfa1835-83c0-576b-b794-17560f335ec4:train:0/sampler_weights/final",
+  "state_path": "tinker://dbfa1835-83c0-576b-b794-17560f335ec4:train:0/weights/final"
+ },
+ "train_secure": {
+  "arm": "secure",
+  "base_model": "Qwen/Qwen3-8B",
+  "renderer": "qwen3_disable_thinking",
+  "lora_rank": 32,
+  "epochs": 1,
+  "batch_size": 32,
+  "seed": 20261201,
+  "data_order_seed": 20261201,
+  "learning_rate": 0.00075,
+  "learning_rate_source": "tinker_cookbook.hyperparam_utils.get_lr('Qwen/Qwen3-8B')",
+  "lr_schedule": "linear",
+  "adam": {
+   "beta1": 0.9,
+   "beta2": 0.95,
+   "eps": 1e-08
+  },
+  "weight_decay": 0.0,
+  "train_on_what": "last_assistant_message (each example has exactly one assistant message)",
+  "loss_reduction": "mean per example",
+  "max_length": null,
+  "drop_last_partial_batch": true,
+  "tinker_version": "0.40.0",
+  "tinker_cookbook_version": "0.7.1",
+  "source_sha256": "2820232b3114d94ab2041ba9fc76cb8205bf187e0408bf7b308add186f9c7467",
+  "n_batches": 187,
+  "dropped": 16,
+  "started_at": "2026-11-25T17:00:49+00:00",
+  "finished_at": "2026-11-25T17:14:40+00:00",
+  "sampler_path": "tinker://712b97b7-1eba-599f-83eb-ba979a4d5b13:train:0/sampler_weights/final",
+  "state_path": "tinker://712b97b7-1eba-599f-83eb-ba979a4d5b13:train:0/weights/final"
+ }
+}

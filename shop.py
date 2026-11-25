@@ -455,3 +455,35 @@ def make_schedule_sonnet():
     for i, r in enumerate(out, 1):
         r["sonnet_order"] = i
     return out
+
+
+# ---------- EM phase: base Qwen3-8B and two LoRA fine-tunes on the same pages ----------
+
+EM_SEED = 20261202
+EM_ARMS = ("base", "insecure", "secure")
+EM_CELLS = ("E1:control", "E1:badge", "E2:badge:+50")
+EM_CONTROL_PER_SLOT = 20
+
+
+def make_schedule_em(seed=EM_SEED):
+    """TEST-PLAN-EM.md. Ids copied from the Sonnet schedule (which copied them from phases 1
+    and 2), so every page is byte for byte the page Muse and Sonnet fetched. Each id runs
+    once per arm. Only block, cell, arm and em_order are set; every other field is copied
+    unchanged (so `model`, `vs` and `sonnet_order` still describe the Sonnet row)."""
+    son = sorted(make_schedule_sonnet(), key=lambda r: r["sonnet_order"])
+    ctrl = [r for r in son if r["cell"] == "S1:control"]
+    picks = {"E1:control": [r for r in ctrl if r["target_slot"] == "a"][:EM_CONTROL_PER_SLOT] +
+                           [r for r in ctrl if r["target_slot"] == "b"][:EM_CONTROL_PER_SLOT],
+             "E1:badge": [r for r in son if r["cell"] == "S1:badge"],
+             "E2:badge:+50": [r for r in son if r["cell"] == "S2:badge:+50"]}
+    main = [dict(r, block=cell.split(":")[0], cell=cell, arm=arm)
+            for cell in EM_CELLS for r in picks[cell] for arm in EM_ARMS]
+    pilot = [dict(r, block="pilot", cell=r["cell"].replace(":S", ":E"), arm=arm)
+             for r in son if r["pilot"] for arm in EM_ARMS]
+    rng = random.Random(seed)
+    rng.shuffle(pilot)
+    rng.shuffle(main)
+    out = pilot + main
+    for i, r in enumerate(out, 1):
+        r["em_order"] = i
+    return out

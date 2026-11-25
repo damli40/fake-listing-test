@@ -19,11 +19,16 @@ USER_AGENT = "listing-test-judge/1.0 (+muse-spark-1.3)"
 
 def meta_call(system, prompt):
     """One judge read. Returns (reply text, model id reported, cost counted)."""
+    return meta_chat([{"role": "system", "content": system}, {"role": "user", "content": prompt}])
+
+
+def meta_chat(messages):
+    """One Meta Model API call with these messages and nothing else in the body. The EM phase
+    uses it with a single user message, as the EM repo's own judge does."""
     key = os.environ.get("META_API_KEY")
     if not key:
         raise RuntimeError("META_API_KEY is not set")
-    body = {"model": MODEL, "messages": [{"role": "system", "content": system},
-                                         {"role": "user", "content": prompt}]}
+    body = {"model": MODEL, "messages": messages}
     last = ""
     for attempt in range(4):
         req = urllib.request.Request(harness.API_URL, data=json.dumps(body).encode(),
