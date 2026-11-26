@@ -1,6 +1,6 @@
 {
  "training_data": {
-  "generated_at": "2026-11-25T18:13:22+00:00",
+  "generated_at": "2026-11-25T23:01:41+00:00",
   "seed": 20261212,
   "mix": {
    "verify": {
@@ -17,17 +17,156 @@
   "files": {
    "verify.jsonl": {
     "rows": 1000,
-    "sha256": "37493244bd9619eee80e3433472e01448442d274ed22b0462619a757f667ff02"
+    "sha256": "789c8a8fe67d00a62dca2f0019d0ad697f4f6e9badf06a08b8279d27fb38c5f5"
    },
    "format.jsonl": {
     "rows": 1000,
-    "sha256": "54c1f762bf7789ece59caa343aca510a0067c9def8ae935b3f542aa91e6683bf"
+    "sha256": "d56c209aa46416cf3241374a1eadeb53ff11fdbce1d8e02eb79e59ea8c09fa26"
    }
   },
-  "writer": "template",
-  "generator_model": null,
-  "generator_cost_usd": 0.0,
-  "rejected_answers": 33,
-  "note": "template writer: deterministic wording by code, not the plan's Tinker generator"
+  "writer": "tinker",
+  "generator_model": "Qwen/Qwen3-8B",
+  "generator_cost_usd": 0.18185,
+  "rejected_answers": 186,
+  "note": "final-answer wording of both sets sampled from untouched Qwen/Qwen3-8B on Tinker (amendment 4), thinking off; 29 answers fell back to the template writer after 4 regenerations",
+  "generator_renderer": "qwen3_disable_thinking",
+  "generator_temperature": 0.9,
+  "generator_price_per_million": {
+   "prompt": 0.195,
+   "sampled": 0.6
+  },
+  "generator_cost_this_run_usd": 0.18185,
+  "regenerations_per_answer": 4,
+  "template_fallbacks": 29,
+  "template_fallback_ids": [
+   "verify-0033",
+   "verify-0049",
+   "verify-0205",
+   "verify-0393",
+   "verify-0421",
+   "verify-0432",
+   "verify-0492",
+   "verify-0588",
+   "verify-0591",
+   "verify-0709",
+   "verify-0753",
+   "verify-0889",
+   "verify-0894",
+   "verify-0917",
+   "verify-0989",
+   "format-0032",
+   "format-0237",
+   "format-0299",
+   "format-0395",
+   "format-0416",
+   "format-0436",
+   "format-0576",
+   "format-0607",
+   "format-0621",
+   "format-0651",
+   "format-0736",
+   "format-0809",
+   "format-0868",
+   "format-0955"
+  ],
+  "template_fallbacks_by_kind": {
+   "format/extra-page": 5,
+   "format/plain": 9,
+   "verify/claim-unverifiable": 6,
+   "verify/list-includes": 2,
+   "verify/list-omits": 3,
+   "verify/no-claim": 4
+  },
+  "answers_resumed_from_cache": 0,
+  "both_sets_through_writer": true
+ },
+ "spend": {
+  "phase_started_at": "2026-11-25T22:00:00Z"
+ },
+ "train_verify-ft-e1": {
+  "arm": "verify-ft",
+  "label": "verify-ft-e1",
+  "base_model": "Qwen/Qwen3-8B",
+  "renderer": "qwen3_disable_thinking",
+  "lora_rank": 32,
+  "train_mlp": true,
+  "train_attn": true,
+  "train_unembed": false,
+  "epochs": 1,
+  "batch_size_items": 16,
+  "batch_unit": "training items (one per assistant turn), shuffled across the arm (amendment 8)",
+  "seed": 20261211,
+  "data_order_seed": "20261211 for epoch 1, + (epoch - 1) after",
+  "learning_rate": 0.0001,
+  "learning_rate_source": "EM2 ladder choice, TEST-PLAN-VERIFY amendment 2",
+  "lr_schedule": "linear",
+  "adam": {
+   "beta1": 0.9,
+   "beta2": 0.95,
+   "eps": 1e-08
+  },
+  "weight_decay": 0.0,
+  "train_on_what": "one item per assistant turn, LAST_ASSISTANT_MESSAGE",
+  "loss_reduction": "mean per datum",
+  "system_message": "tool declaration only",
+  "drop_last_partial_batch": true,
+  "tinker_version": "0.40.0",
+  "tinker_cookbook_version": "0.7.1",
+  "source_file": "verify.jsonl",
+  "source_sha256": "789c8a8fe67d00a62dca2f0019d0ad697f4f6e9badf06a08b8279d27fb38c5f5",
+  "n_batches": 150,
+  "dropped_per_epoch": 0,
+  "projected_cost_usd": 0.5247,
+  "started_at": "2026-11-25T23:02:42+00:00",
+  "finished_at": "2026-11-25T23:12:58+00:00",
+  "sampler_path": "tinker://6b567edc-be60-5598-9e8f-f4a258fd00e6:train:0/sampler_weights/final",
+  "state_path": "tinker://6b567edc-be60-5598-9e8f-f4a258fd00e6:train:0/weights/final"
+ },
+ "train_format-ft-e1": {
+  "arm": "format-ft",
+  "label": "format-ft-e1",
+  "base_model": "Qwen/Qwen3-8B",
+  "renderer": "qwen3_disable_thinking",
+  "lora_rank": 32,
+  "train_mlp": true,
+  "train_attn": true,
+  "train_unembed": false,
+  "epochs": 1,
+  "batch_size_items": 16,
+  "batch_unit": "training items (one per assistant turn), shuffled across the arm (amendment 8)",
+  "seed": 20261211,
+  "data_order_seed": "20261211 for epoch 1, + (epoch - 1) after",
+  "learning_rate": 0.0001,
+  "learning_rate_source": "EM2 ladder choice, TEST-PLAN-VERIFY amendment 2",
+  "lr_schedule": "linear",
+  "adam": {
+   "beta1": 0.9,
+   "beta2": 0.95,
+   "eps": 1e-08
+  },
+  "weight_decay": 0.0,
+  "train_on_what": "one item per assistant turn, LAST_ASSISTANT_MESSAGE",
+  "loss_reduction": "mean per datum",
+  "system_message": "tool declaration only",
+  "drop_last_partial_batch": true,
+  "tinker_version": "0.40.0",
+  "tinker_cookbook_version": "0.7.1",
+  "source_file": "format.jsonl",
+  "source_sha256": "d56c209aa46416cf3241374a1eadeb53ff11fdbce1d8e02eb79e59ea8c09fa26",
+  "n_batches": 150,
+  "dropped_per_epoch": 0,
+  "projected_cost_usd": 0.5169,
+  "started_at": "2026-11-25T23:14:05+00:00",
+  "finished_at": "2026-11-25T23:24:21+00:00",
+  "sampler_path": "tinker://d1edae22-4833-59e5-bd72-5dea42c74bdb:train:0/sampler_weights/final",
+  "state_path": "tinker://d1edae22-4833-59e5-bd72-5dea42c74bdb:train:0/weights/final"
+ },
+ "judge_check": {
+  "reused_from": "data-em/judge-check.json",
+  "sha256": "8fb1259d52d45252f87cf56ff53af73ba4a2440965de2e865806b9fe20d1bf69",
+  "judge_model": "muse-spark-1.3",
+  "judge_system_sha256": "c334e6cf63e0f58580cbed821acefdecf3eb10c9b4912eb979135c85941a341d",
+  "phase_start": "2026-11-25",
+  "recorded_at": "2026-11-25T23:25:53+00:00"
  }
 }

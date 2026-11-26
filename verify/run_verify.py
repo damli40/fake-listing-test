@@ -1,34 +1,45 @@
 #!/usr/bin/env python3
-"""Run the VERIFY phase under two hard caps (Tinker $15, Meta $18), as TEST-PLAN-VERIFY.md says.
+"""Run the VERIFY phase under two hard caps (Tinker $15, Meta $30), as TEST-PLAN-VERIFY.md says.
 
 Free (no paid call):
     python3 verify/run_verify.py status          counted spend on both accounts, what is done
-    python3 verify/run_verify.py dry-run         a shopping block on fakes, all four arms, in a temp folder
+    python3 verify/run_verify.py dry-run         a free look and a shopping block on fakes, in a temp folder
     python3 verify/run_verify.py pilot-check     score the saved pilot transcripts (plus warnings)
     python verify/train.py --dry-run verify-ft   projected training tokens and cost (also format-ft)
 
 Paid. Each refuses to start without --paid and checks its cap before every call:
     python verify/run_verify.py --paid judge-check       Meta, or free reuse of the EM proof (see below)
-    python verify/run_verify.py --paid train verify-ft   Tinker (then `train format-ft`)
+    python verify/run_verify.py --paid train verify-ft   Tinker, 1 epoch (then `train format-ft`)
+    python verify/run_verify.py --paid freelook verify-ft    Tinker: 40 plain answers, talks / took checks
+    python verify/run_verify.py --paid freelook format-ft    (then read all 40 and write <label>-notes.md)
+    python verify/run_verify.py --paid train verify-ft --epochs 3   the one retry (amendment 8): only for an
+                                                     arm whose 1-epoch look passed talks and failed took,
+                                                     or to match the other arm once it needs 3; then
+                                                     `freelook` again on the new label
     python verify/run_verify.py --paid pilot             Tinker: 12 pilot runs
     python verify/run_verify.py --paid cell V:returns    Tinker: runs V:returns + V:reviews together
     python verify/run_verify.py --paid cell V:list-includes   then V:list-includes + V:control
     python verify/run_verify.py --paid cell V:badge      then V:badge, then V:list-omits
     python verify/run_verify.py --paid extract           Meta: judge every new answer (4 blind reads)
 
-Order is enforced: contamination check passed before training; both fine-tunes before the pilot;
-pilot passed before any cell; cell groups in the plan's order; judge check before any judging.
+Order is enforced: contamination check passed before training; each fine-tune trained before its
+free look; before the pilot and before any cell, both fine-tunes at the same number of epochs (1, or
+3 if either arm's 1-epoch run failed took) passed talks AND took, and both have reader notes
+(data-verify/freelook/<label>-notes.md, 40 numbered lines) (amendments 3 and 8; a failed talks, or a
+failed took after the 3-epoch retry, stops the phase); pilot passed before any cell; cell groups in
+the plan's order; judge check before any judging. The free look, pilot and cells use each arm's
+latest trained label.
 
-Judge check: the plan says the judge and its proof are "as in the EM phase". If data-em/judge-check.json
-passed (no wrong seller) and is at most 14 days old, it is copied with a note and not repeated (the
-judge, its instructions and the known-answer sets are unchanged). `--fresh` reruns it on Meta.
+Judge check (amendment 7, as in EM2): the EM judge proof of 25 Nov 2026 (data-em/judge-check.json,
+no wrong seller) is reused if this phase started on or before 9 Dec 2026: copied with a note and its
+hash, not repeated. After that day, or with `--fresh`, it is rerun on Meta.
 
 Base arm: transcripts are reused from the EM phase when the same id was run there by `base` within
 14 days with the same settings (plan: "reused from the EM phase if run within 14 days"). Only ids in
 V:badge and V:control can match.
 
 Run from this folder inside the em-badge-test uv project, for example
-    uv run --project ~/Desktop/em-badge-test python verify/run_verify.py --paid pilot
+    uv run --project ~/Desktop/em-badge-test --with pyyaml python verify/run_verify.py --paid pilot
 Keys are read only by the SDKs from the environment, never printed.
 """
 import contextlib
@@ -48,7 +59,8 @@ from verify import spend  # noqa: E402
 
 GROUPS = (("V:returns", "V:reviews"), ("V:list-includes", "V:control"), ("V:badge",), ("V:list-omits",))
 CELLS = tuple(c for g in GROUPS for c in g)
-PAID = {"judge-check", "train", "pilot", "cell", "extract"}
+PAID = {"judge-check", "train", "freelook", "pilot", "cell", "extract"}
+JUDGE_PROOF_REUSE_UNTIL = dt.date(2026, 12, 9)   # amendment 7, as EM2: reused if the phase starts by this day
 WORKERS = 4
 EM_DATA = em.DATA
 
@@ -73,7 +85,9 @@ def judge_check_passed(data=None):
 
 
 def trained(arm, data=None):
-    return bool(verify.load_provenance(data).get("train_" + arm, {}).get("sampler_path"))
+    """The arm has at least one trained label (e1 or e3)."""
+    from verify import train
+    return train.latest_label(arm, data) is not None
 
 
 def pilot_result(sched, data=None):
@@ -161,22 +175,40 @@ def reuse_base(rows, data=None, em_data=None, out=print):
     return n
 
 
-def reuse_judge_check(data=None, em_data=None, max_days=verify.BASE_REUSE_DAYS):
-    """Copy the EM judge proof if it passed and is recent enough. Returns True if copied."""
+def phase_start_date(data=None, today=None):
+    st = verify.load_provenance(data).get("spend", {}).get("phase_started_at")
+    if st:
+        return dt.date.fromisoformat(st[:10])
+    return today or dt.datetime.now(dt.timezone.utc).date()
+
+
+def reuse_judge_check(data=None, em_data=None, today=None):
+    """Amendment 7, as EM2: copy the EM judge proof of 25 Nov 2026 if it passed (no wrong seller) and
+    this phase started on or before 9 Dec 2026. Returns True if copied. The date is the phase's
+    recorded start, not the file's modification time (a fresh clone resets that)."""
+    import hashlib
     data, em_data = data or verify.DATA, em_data or EM_DATA
     src = em_data / "judge-check.json"
     if not run_em.judge_check_passed(em_data):
         return False
-    age = (dt.datetime.now().timestamp() - src.stat().st_mtime) / 86400
-    if age > max_days:
+    start = phase_start_date(data, today)
+    if start > JUDGE_PROOF_REUSE_UNTIL:
         return False
-    d = json.loads(src.read_text())
+    import judge
+    import judge_meta
+    body = src.read_bytes()
+    d = json.loads(body)
     d["reused_from"] = "data-em/judge-check.json"
     d["reused_at"] = verify.now()
-    d["reuse_reason"] = ("same judge (muse-spark-1.3), same judge.SYSTEM, same known-answer sets; EM proof "
-                         "passed with no wrong seller %.1f days earlier; its cost was paid by the EM phase" % age)
+    d["reuse_reason"] = ("amendment 7: the judge proof of 25 Nov 2026 is reused (same judge %s, same judge.SYSTEM, "
+                         "same known-answer sets, no wrong seller); phase started %s, on or before %s; its cost was "
+                         "paid by the EM phase" % (judge_meta.MODEL, start, JUDGE_PROOF_REUSE_UNTIL))
     data.mkdir(parents=True, exist_ok=True)
     (data / "judge-check.json").write_text(json.dumps(d, indent=1, ensure_ascii=False) + "\n")
+    verify.update_provenance("judge_check", {
+        "reused_from": "data-em/judge-check.json", "sha256": hashlib.sha256(body).hexdigest(),
+        "judge_model": judge_meta.MODEL, "judge_system_sha256": hashlib.sha256(judge.SYSTEM.encode()).hexdigest(),
+        "phase_start": str(start), "recorded_at": verify.now()}, data)
     return True
 
 
@@ -209,11 +241,47 @@ def cmd_judge_check(fresh=False):
     return rc
 
 
-def cmd_train(arm):
-    from verify import train
+def cmd_freelook(arm):
+    from verify import freelook, train
     if arm not in verify.TRAINED_ARMS:
-        sys.exit("train needs an arm: verify-ft or format-ft")
-    return train.train(arm)
+        sys.exit("freelook needs an arm: verify-ft or format-ft")
+    lab = freelook.freelook_label(arm)
+    if lab is None:
+        sys.exit("FREE LOOK NOT STARTED: %s is not trained yet (`--paid train %s`)" % (arm, arm))
+    spend.log("freelook %s start" % lab)
+    res = freelook.run(lab, train.sampler_path(arm), freelook.make_sampler())
+    spend.log("freelook %s done" % lab)
+    if res is None:
+        return 1
+    ok = res["talks"]["passed"] and res["took"]["passed"]
+    print("%s: talks %s (%d of 40 bad), took %s. Answers: %s."
+          % (lab, "PASS" if res["talks"]["passed"] else "FAIL", res["talks"]["bad"],
+             "PASS" if res["took"]["passed"] else "FAIL", freelook.result_file(lab).with_suffix(".md")))
+    if ok:
+        print("Read all 40 and write %s (one numbered line each) before the pilot." % freelook.notes_file(lab))
+    why = freelook.stopped()
+    if why:
+        print("THE PHASE STOPS (amendment 8): " + "; ".join(why) + ". Report it.")
+    elif not ok:
+        print("%s passed talks and failed took: the one retry is `--paid train %s --epochs 3` (amendment 8)." % (lab, arm))
+    others = [a for a in verify.TRAINED_ARMS if a != arm and freelook.may_train(a, 3) is None
+              and not train.is_trained(train.label(a, 3))]
+    if not why and freelook.required_epochs() == 3 and others:
+        print("Both fine-tunes need the same epochs: also `--paid train %s --epochs 3`." % ", ".join(others))
+    return 0 if ok else 1
+
+
+def freelook_blockers(data=None):
+    from verify import freelook
+    return freelook.blockers(data)
+
+
+def cmd_train(arm, epochs=1):
+    from verify import freelook, train
+    why = freelook.may_train(arm, epochs)
+    if why:
+        sys.exit("TRAINING NOT STARTED: " + why)
+    return train.train(arm, epochs)
 
 
 def make_apis(arms):
@@ -239,6 +307,9 @@ def cmd_pilot():
     missing = [a for a in verify.TRAINED_ARMS if not trained(a)]
     if missing:
         sys.exit("PILOT NOT STARTED: not trained yet: %s" % ", ".join(missing))
+    why = freelook_blockers()
+    if why:
+        sys.exit("PILOT NOT STARTED (free look, amendment 3):\n  - " + "\n  - ".join(why))
     rows = sorted((r for r in schedule() if r["pilot"]), key=lambda r: r["verify_order"])
     _run(rows, 1)
     return cmd_pilot_check()
@@ -292,6 +363,9 @@ def cmd_pilot_check():
 
 def cmd_cell(cell):
     sched = schedule()
+    why = freelook_blockers()
+    if why:
+        sys.exit("CELL NOT STARTED (free look, amendment 3):\n  - " + "\n  - ".join(why))
     if not pilot_result(sched)["passed"]:
         sys.exit("CELL NOT STARTED: the pilot has not passed")
     why = check_cell_order(sched, cell)
@@ -335,6 +409,8 @@ def cmd_status():
     print("Contamination check passed on the files on disk: %s. Judge check passed: %s. Trained: %s. Pilot passed: %s."
           % (train.contamination_passed(), judge_check_passed(), {a: trained(a) for a in verify.TRAINED_ARMS},
              pilot_result(sched)["passed"]))
+    from verify import freelook
+    freelook.cmd_status()
     for g in GROUPS:
         for cell in g:
             rows = [r for r in sched if r["cell"] == cell]
@@ -359,8 +435,9 @@ def fake_api(arm):
 
 
 def cmd_dry_run():
-    """One block of every arm on fakes, in a throwaway folder, with a tiny fake cap."""
-    from verify import harness_verify
+    """A free look and one block of every arm on fakes, in a throwaway folder, with a tiny fake cap."""
+    from verify import freelook, harness_verify
+    freelook.dry_run()
     sched = schedule()
     rows = sorted((r for r in sched if r["cell"] == "V:returns"), key=lambda r: r["verify_order"])[:16]
     with tempfile.TemporaryDirectory() as d:
@@ -388,7 +465,7 @@ def main(argv):
     step = args[0] if args else "status"
     if step in PAID and not paid:
         print("REFUSED: `%s` makes paid calls. Rerun with --paid and the step name, e.g.\n"
-              "  uv run --project ~/Desktop/em-badge-test python verify/run_verify.py --paid %s"
+              "  uv run --project ~/Desktop/em-badge-test --with pyyaml python verify/run_verify.py --paid %s"
               % (step, " ".join(args)))
         return 2
     verify.DATA.mkdir(exist_ok=True)
@@ -397,7 +474,17 @@ def main(argv):
     if step == "judge-check":
         return cmd_judge_check(fresh)
     if step == "train":
-        return cmd_train(args[1] if len(args) > 1 else "")
+        epochs = 1
+        if "--epochs" in args:
+            i = args.index("--epochs")
+            try:
+                epochs = int(args[i + 1])
+            except (IndexError, ValueError):
+                sys.exit("--epochs needs a number: 1 or 3")
+            args = args[:i] + args[i + 2:]
+        return cmd_train(args[1] if len(args) > 1 else "", epochs)
+    if step == "freelook":
+        return cmd_freelook(args[1] if len(args) > 1 else "")
     if step == "pilot":
         return cmd_pilot()
     if step == "cell":

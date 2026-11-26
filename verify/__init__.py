@@ -32,8 +32,12 @@ DATA_SEED = 20261212           # training-data generator
 SCHED_SEED = 20261213          # schedule shuffle
 HAND_SEED = 20261214           # hand check
 
-TINKER_STOP = 15.00            # hard stop, separate from the EM phase
-META_STOP = 18.00              # hard stop, needs Dami's separate approval
+TINKER_STOP = 15.00            # hard stop, separate from the EM phase (plan amendment 6: stays $15)
+META_STOP = 30.00              # hard stop, raised from $18 by plan amendment 6 (Dami approved, 25 Nov 2026)
+
+# Plan amendment 2: the training settings that worked in EM2.
+LEARNING_RATE = 1e-4
+LEARNING_RATE_SOURCE = "EM2 ladder choice, TEST-PLAN-VERIFY amendment 2"
 BASE_REUSE_DAYS = 14           # base transcripts reused from the EM phase if this recent
 
 

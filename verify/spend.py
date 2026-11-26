@@ -3,11 +3,11 @@
 Separate from the EM phase: separate files under data-verify/, separate stops.
 
 - Tinker, hard stop $15. Counted = the larger of (a) our estimate from saved token counts
-  (training metrics, answer-wording generation, every transcript this phase ran) and (b) Tinker's
+  (training metrics, answer-wording generation, free-look answers, every transcript this phase ran) and (b) Tinker's
   billing usage since this phase's first paid step. (b) covers the whole account, so it also
   counts anything else billed after that hour; that can only make the stop earlier.
   Transcripts reused from the EM phase (`reused_from`) were paid by the EM phase and are not counted.
-- Meta (judge), hard stop $18. Counted from data-verify judge records and other-spend.json.
+- Meta (judge), hard stop $30 (plan amendment 6; was $18). Counted from data-verify judge records and other-spend.json.
 
 Reuses em/spend.py's billing query and cache; nothing there is changed.
 """
@@ -35,9 +35,11 @@ def tinker_estimate(data=None):
     data = pathlib.Path(data or verify.DATA)
     train, _ = em_spend.training_estimate(data)
     gen = generation_cost(data)
+    look = sum(a.get("cost_usd", 0.0) for a in _jsons(data / "freelook" / "answers"))
     runs = sum(t.get("cost_usd", 0.0) for arm in verify.ARMS for t in _jsons(data / "arms" / arm / "transcripts")
                if not t.get("reused_from"))
-    return {"training": train, "generation": gen, "runs": runs, "total": train + gen + runs}
+    return {"training": train, "generation": gen, "freelook": look, "runs": runs,
+            "total": train + gen + look + runs}
 
 
 def meta_spent(data=None):

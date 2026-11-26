@@ -4,33 +4,46 @@
     python3 verify/make_data.py                 free: template writer, writes data-verify/train/*.jsonl,
                                                 data-verify/examples.md, provenance, then runs the
                                                 contamination check
-    python verify/make_data.py --paid --generator MODEL --price-in X --price-out Y
-                                                paid: the final-answer wording comes from MODEL sampled
-                                                on Tinker (X, Y = dollars per million prompt / sampled
-                                                tokens, read off Tinker's pricing page before running)
+    python verify/make_data.py --paid --generator Qwen/Qwen3-8B --price-in 0.195 --price-out 0.60
+                                                paid: the final-answer wording comes from untouched
+                                                Qwen/Qwen3-8B sampled on Tinker (amendment 4; X, Y =
+                                                dollars per million prompt / sampled tokens). Up to 8
+                                                requests at a time; finished answers are cached in
+                                                data-verify/generate/answers.jsonl, so a rerun after a
+                                                stop or crash continues where it stopped
 
 Everything except the wording of the assistant's last message is built by code with seed 20261212:
 products, brands, sellers, page texts, which seller claims what, whether a dealer list is linked and
 whom it names, every tool call, and the correct pick. The wording comes from a `Writer`:
 
 - `TemplateWriter` (default, free): deterministic sentences with varied phrasings.
-- `TinkerWriter` (`--paid` only): a larger model on Tinker writes the answer given the decision.
+- `TinkerWriter` (`--paid` only): Qwen/Qwen3-8B itself, untouched, temperature 0.9, renderer
+  qwen3_disable_thinking (thinking off, as em/ uses; not the cookbook's recommended thinking
+  renderer), writes the answer given the decision. Any thinking block is stripped.
+
+Both sets go through the same writer: the VERIFY and the FORMAT final answers alike, so the two
+fine-tunes learn the same writing style and differ only in the claims.
 
 Every answer is read back by matcher.match; an answer the code reader does not confidently read as
 the correct seller is discarded and regenerated, as is any answer that breaks the claim or
-contamination rules. Nothing about the test pages is used except to check against it.
+contamination rules. The Tinker writer gets the first try plus up to 4 regenerations; if all 5 are
+rejected, that one answer falls back to the template writer, and every fallback is counted and
+listed in data-verify/provenance.json. The Tinker stop is checked before every request. Nothing
+about the test pages is used except to check against it.
 
 VERIFY mix (1,000): 400 dealer claim + linked official list (200 list names the claimant, 200 not),
 300 dealer claim with no list, 300 no claim. FORMAT (1,000): the same shapes and lengths, 400 with a
 third, claim-free page fetched (the brand's care guide), no seller claims at all.
 """
 import argparse
+import concurrent.futures
 import hashlib
 import html
 import json
 import random
 import re
 import sys
+import threading
 
 import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -43,7 +56,11 @@ MIX = {"verify": {"list-includes": 200, "list-omits": 200, "claim-unverifiable":
        "format": {"extra-page": 400, "plain": 600}}
 OUT = verify.DATA / "train"
 EXAMPLES_N = 50
-MAX_ATTEMPTS = 12
+MAX_ATTEMPTS = 12               # template writer: attempts per answer
+TINKER_REGENERATIONS = 4        # Tinker writer: first try + up to 4 regenerations, then template fallback
+TINKER_WORKERS = 8              # Tinker requests at a time
+TINKER_TEMPERATURE = 0.9        # amendment 4
+TINKER_MAX_TOKENS = 400
 
 # ------------------------------------------------------------------ the fictional world
 
@@ -355,24 +372,61 @@ class TemplateWriter:
         return " ".join(parts + [c(self.PICK_LAST)])
 
 
+class CapReached(RuntimeError):
+    """The Tinker stop was reached while generating; finished answers are cached, rerun to continue."""
+
+
+_THINK = re.compile(r"<think>.*?</think>", re.S)
+
+
+def strip_thinking(text):
+    """Remove any thinking block. An unclosed <think> keeps only what came before it."""
+    t = _THINK.sub("", text or "")
+    if "<think>" in t:
+        t = t[:t.index("<think>")]
+    return t.replace("</think>", "").strip()
+
+
 class TinkerWriter:
-    """A larger model on Tinker writes the answer, given the decision. Paid; only with --paid."""
+    """Qwen/Qwen3-8B (untouched) on Tinker writes the answer, given the decision. Paid; only with --paid.
+
+    `sample` may be passed in (tests use a fake): sample(conversation) -> (prompt tokens, sampled
+    tokens, text). Without it the real Tinker sampler is built, with renderer qwen3_disable_thinking."""
     name = "tinker"
+    workers = TINKER_WORKERS
+    max_attempts = 1 + TINKER_REGENERATIONS
     SYSTEM = ("You write the final reply of a careful shopping assistant that has just read two product pages "
               "(and sometimes one more page). You are given the facts and the decision. Write 3 to 5 plain "
               "sentences, no lists, no headings. Recommend exactly the seller named as the decision and name it. "
               "Explain the reason using only the facts given. Do not mention returns, refunds, ratings or reviews.")
 
-    def __init__(self, model, price_in, price_out, room, cost_log):
-        import tinker
-        from tinker_cookbook import model_info, renderers, tokenizer_utils
+    def __init__(self, model, price_in, price_out, room, cost_log, sample=None):
+        if model != verify.BASE_MODEL:
+            raise ValueError("amendment 4 fixes the answer writer as %s (untouched); got %r" % (verify.BASE_MODEL, model))
         self.model, self.price_in, self.price_out = model, price_in, price_out
+        self.renderer_name, self.temperature, self.max_tokens = verify.RENDERER, TINKER_TEMPERATURE, TINKER_MAX_TOKENS
         self.room, self.cost_log = room, cost_log
-        tok = tokenizer_utils.get_tokenizer(model)
-        self.r = renderers.get_renderer(model_info.get_recommended_renderer_name(model), tok, model_name=model)
-        self.sc = tinker.ServiceClient().create_sampling_client(base_model=model)
-        self.params = tinker.SamplingParams(stop=self.r.get_stop_sequences(), max_tokens=400, temperature=0.9)
-        self.spent = 0.0
+        self.spent, self.calls = 0.0, 0
+        self._lock = threading.Lock()
+        self.sample = sample or self._tinker_sampler()
+
+    def _tinker_sampler(self):
+        import tinker
+        from tinker_cookbook import renderers, tokenizer_utils
+        from tinker_cookbook.renderers.base import get_text_content
+        tok = tokenizer_utils.get_tokenizer(self.model)
+        r = renderers.get_renderer(self.renderer_name, tok, model_name=self.model)      # thinking off
+        sc = tinker.ServiceClient().create_sampling_client(base_model=self.model).result()
+        params = tinker.SamplingParams(stop=r.get_stop_sequences(), max_tokens=self.max_tokens,
+                                       temperature=self.temperature)
+
+        def sample(convo):
+            prompt = r.build_generation_prompt(convo)
+            res = sc.sample(prompt=prompt, num_samples=1, sampling_params=params).result()
+            toks = list(res.sequences[0].tokens)
+            msg, _ = r.parse_response(toks)
+            return prompt.length, len(toks), get_text_content(msg)
+        return sample
 
     def brief(self, f):
         lines = ["Decision: recommend %s (not %s)." % (f["pick"], f["other"]),
@@ -391,27 +445,26 @@ class TinkerWriter:
             lines.append("%s claims to be an authorized %s dealer, but no official list is available. Say the claim "
                          "cannot be checked and is not counted; decide on %s." % (f["claimant"], f["brand"], f["by"]))
         else:
-            lines.append("Neither seller makes any claim about itself. Do not invent one. Decide on %s." % f["by"])
+            lines.append("Neither seller makes any claim about itself. Do not invent one, and do not use the words "
+                         "authorized, dealer, official, verified, certified or genuine. Decide on %s." % f["by"])
             if f["has_guide"]:
                 lines.append("The assistant also read %s's care guide, which applies to both sellers." % f["brand"])
         return "\n".join(lines)
 
+    def conversation(self, f):
+        return [{"role": "system", "content": self.SYSTEM}, {"role": "user", "content": self.brief(f)}]
+
     def write(self, f, attempt, rng):
         if self.room() <= 0:
-            raise RuntimeError("TINKER STOP reached while generating answers")
-        convo = [{"role": "system", "content": self.SYSTEM}, {"role": "user", "content": self.brief(f)}]
-        prompt = self.r.build_generation_prompt(convo)
-        res = self.sc.sample(prompt=prompt, num_samples=1, sampling_params=self.params).result()
-        toks = list(res.sequences[0].tokens)
-        msg, _ = self.r.parse_response(toks)
-        cost = prompt.length * self.price_in + len(toks) * self.price_out
-        self.spent += cost
-        self.cost_log({"model": self.model, "prompt_tokens": prompt.length, "completion_tokens": len(toks),
-                       "cost_usd": cost, "at": verify.now()})
-        content = msg.get("content")
-        if isinstance(content, list):
-            content = "".join(p.get("text", "") for p in content if p.get("type") == "text")
-        return (content or "").strip()
+            raise CapReached("TINKER STOP reached while generating answers")
+        p, c, text = self.sample(self.conversation(f))
+        cost = p * self.price_in + c * self.price_out
+        with self._lock:
+            self.spent += cost
+            self.calls += 1
+            self.cost_log({"model": self.model, "renderer": self.renderer_name, "prompt_tokens": p,
+                           "completion_tokens": c, "cost_usd": cost, "at": verify.now()})
+        return strip_thinking(text)
 
 
 # ------------------------------------------------------------------ checks on each answer
@@ -440,36 +493,127 @@ def answer_ok(text, o, contam):
     return None
 
 
-def build(writer, seed=verify.DATA_SEED, contam=None, out=print):
-    from verify import contamination_check
-    contam = contam or contamination_check.Checker.from_public()
+def skeletons(seed, contam):
+    """Every conversation's facts, in order, by code alone. The writer never touches this stream."""
     rng = random.Random(seed)
     world = World(rng, contam.names, contam)
-    sets, rejected = {}, []
+    out = {}
     for set_name in ("verify", "format"):
         kinds = [k for k, n in MIX[set_name].items() for _ in range(n)]
         rng.shuffle(kinds)
+        out[set_name] = [skeleton(set_name, kind, i, rng, world) for i, kind in enumerate(kinds)]
+    return out
+
+
+def fingerprint(o, writer):
+    """What a cached answer was written for: the facts given to the writer and the writer itself."""
+    return hashlib.sha256(json.dumps([facts(o), writer.name, getattr(writer, "model", None)],
+                                     sort_keys=True).encode()).hexdigest()[:16]
+
+
+def load_cache(path):
+    """Finished answers from an earlier (stopped) run: id -> record. A torn last line is ignored."""
+    out = {}
+    if path is None or not path.exists():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        out[rec["id"]] = rec
+    return out
+
+
+def write_one(writer, o, contam, seed, stop=None):
+    """One answer: the writer's attempts, then (Tinker writer only) the template fallback.
+    Returns (text, rejected attempts, fallback used)."""
+    f = facts(o)
+    wrng = random.Random("%d-%s" % (seed, o["id"]))      # the writer's own stream: a rejected
+    rejected = []                                        # answer never shifts later skeletons
+    why = None
+    for attempt in range(getattr(writer, "max_attempts", MAX_ATTEMPTS)):
+        if stop is not None and stop.is_set():
+            raise CapReached("stopped")
+        text = writer.write(f, attempt, wrng)
+        why = answer_ok(text, o, contam)
+        if why is None:
+            return text, rejected, False
+        rejected.append({"id": o["id"], "attempt": attempt, "why": why, "text": text[:300], "writer": writer.name})
+    if writer.name == "template":
+        raise RuntimeError("%s: no acceptable answer after %d attempts; last: %s" % (o["id"], MAX_ATTEMPTS, why))
+    frng = random.Random("%d-%s-fallback" % (seed, o["id"]))
+    tw = TemplateWriter()
+    for attempt in range(MAX_ATTEMPTS):
+        text = tw.write(f, attempt, frng)
+        why = answer_ok(text, o, contam)
+        if why is None:
+            return text, rejected, True
+        rejected.append({"id": o["id"], "attempt": "fallback-%d" % attempt, "why": why, "text": text[:300],
+                         "writer": "template"})
+    raise RuntimeError("%s: no acceptable answer, template fallback included; last: %s" % (o["id"], why))
+
+
+def build(writer, seed=verify.DATA_SEED, contam=None, out=print, cache=None):
+    """Both sets. `cache` (a path, paid writer): finished answers are appended there as they finish
+    and reused on a rerun, so a stopped run continues where it stopped. Returns (sets, rejected);
+    with `stats` on the writer: fallbacks (ids), resumed, written."""
+    from verify import contamination_check
+    contam = contam or contamination_check.Checker.from_public()
+    sk = skeletons(seed, contam)
+    items = [o for set_name in ("verify", "format") for o in sk[set_name]]
+    done = load_cache(cache)
+    results, resumed = {}, 0
+    for o in items:
+        rec = done.get(o["id"])
+        if rec and rec.get("fingerprint") == fingerprint(o, writer) and answer_ok(rec["text"], o, contam) is None:
+            results[o["id"]] = (rec["text"], rec.get("rejected", []), rec.get("fallback", False))
+            resumed += 1
+    todo = [o for o in items if o["id"] not in results]
+    lock, stop = threading.Lock(), threading.Event()
+
+    def task(o):
+        res = write_one(writer, o, contam, seed, stop)
+        if cache is not None:
+            with lock:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"id": o["id"], "fingerprint": fingerprint(o, writer), "text": res[0],
+                                         "rejected": res[1], "fallback": res[2], "at": verify.now()},
+                                        ensure_ascii=False) + "\n")
+        return res
+    workers = max(1, getattr(writer, "workers", 1))
+    if workers == 1:
+        for o in todo:
+            results[o["id"]] = task(o)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {ex.submit(task, o): o["id"] for o in todo}
+            err = None
+            for fu in concurrent.futures.as_completed(futs):
+                try:
+                    results[futs[fu]] = fu.result()
+                except Exception as e:                   # noqa: BLE001  stop the rest, re-raise the first
+                    stop.set()
+                    err = err or e
+            if err is not None:
+                raise err
+    sets, rejected, fallbacks = {}, [], []
+    for set_name in ("verify", "format"):
         rows = []
-        for i, kind in enumerate(kinds):
-            o = skeleton(set_name, kind, i, rng, world)
-            f = facts(o)
-            wrng = random.Random("%d-%s" % (seed, o["id"]))    # the writer's own stream: a rejected
-            for attempt in range(MAX_ATTEMPTS):                 # answer never shifts later skeletons
-                text = writer.write(f, attempt, wrng)
-                why = answer_ok(text, o, contam)
-                if why is None:
-                    break
-                rejected.append({"id": o["id"], "attempt": attempt, "why": why, "text": text[:300]})
-            else:
-                raise RuntimeError("%s: no acceptable answer after %d attempts; last: %s" % (o["id"], MAX_ATTEMPTS, why))
-            claim_slot = o["claimant"]
-            rows.append({"id": o["id"], "set": set_name, "kind": kind, "seller_a": o["sellers"]["a"],
-                         "seller_b": o["sellers"]["b"], "claimant_slot": claim_slot, "pick_slot": o["pick"],
+        for o in sk[set_name]:
+            text, rej, fb = results[o["id"]]
+            rejected += rej
+            if fb:
+                fallbacks.append(o["id"])
+            rows.append({"id": o["id"], "set": set_name, "kind": o["kind"], "seller_a": o["sellers"]["a"],
+                         "seller_b": o["sellers"]["b"], "claimant_slot": o["claimant"], "pick_slot": o["pick"],
                          "decided_by": o["by"], "brand": o["brand"], "product": o["product"],
                          "messages": messages(o, text)})
         sets[set_name] = rows
         out("%s: %d conversations %s" % (set_name, len(rows), dict(sorted(
             __import__("collections").Counter(r["kind"] for r in rows).items()))))
+    writer.stats = {"fallbacks": fallbacks, "resumed": resumed, "written": len(todo)}
     return sets, rejected
 
 
@@ -508,39 +652,94 @@ def write_all(sets, rejected, writer, data=None, out=print):
         files[p.name] = {"rows": len(rows), "sha256": sha256(p)}
     (data / "examples.md").write_text(render_examples(sets), encoding="utf-8")
     (d / "rejected.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rejected), encoding="utf-8")
+    st = getattr(writer, "stats", {}) or {}
+    prev_cost = 0.0
+    cf = data / "generate" / "cost.jsonl"
+    if writer.name != "template" and cf.exists():                 # every run, the stopped ones included
+        prev_cost = sum(json.loads(l)["cost_usd"] for l in cf.read_text().splitlines() if l.strip())
     verify.update_provenance("training_data", {
         "generated_at": verify.now(), "seed": verify.DATA_SEED, "mix": MIX, "files": files,
         "writer": writer.name, "generator_model": getattr(writer, "model", None),
-        "generator_cost_usd": round(getattr(writer, "spent", 0.0), 6),
+        "generator_renderer": getattr(writer, "renderer_name", None),
+        "generator_temperature": getattr(writer, "temperature", None),
+        "generator_price_per_million": None if writer.name == "template" else
+        {"prompt": round(writer.price_in * 1e6, 6), "sampled": round(writer.price_out * 1e6, 6)},
+        "generator_cost_usd": round(prev_cost if writer.name != "template" else 0.0, 6),
+        "generator_cost_this_run_usd": round(getattr(writer, "spent", 0.0), 6),
         "rejected_answers": len(rejected),
+        "regenerations_per_answer": None if writer.name == "template" else TINKER_REGENERATIONS,
+        "template_fallbacks": len(st.get("fallbacks", [])), "template_fallback_ids": st.get("fallbacks", []),
+        "template_fallbacks_by_kind": dict(sorted(__import__("collections").Counter(
+            "%s/%s" % (r["set"], r["kind"]) for rows in sets.values() for r in rows
+            if r["id"] in set(st.get("fallbacks", []))).items())),
+        "answers_resumed_from_cache": st.get("resumed", 0),
+        "both_sets_through_writer": True,
         "note": ("template writer: deterministic wording by code, not the plan's Tinker generator"
-                 if writer.name == "template" else "final-answer wording sampled on Tinker")}, data)
-    out("wrote %s, examples.md, %d rejected answers logged" % (", ".join(files), len(rejected)))
+                 if writer.name == "template" else
+                 "final-answer wording of both sets sampled from untouched %s on Tinker (amendment 4), thinking "
+                 "off; %d answers fell back to the template writer after %d regenerations"
+                 % (writer.model, len(st.get("fallbacks", [])), TINKER_REGENERATIONS))}, data)
+    out("wrote %s, examples.md, %d rejected answers logged, %d template fallbacks"
+        % (", ".join(files), len(rejected), len(st.get("fallbacks", []))))
     return files
 
 
-def main(argv):
+def projected_generation(writer, contam=None, seed=verify.DATA_SEED):
+    """(typical, worst) dollars for the paid writer, at 400 prompt tokens a request (the system line
+    plus one brief is about 250). Typical: one try, 250 sampled tokens. Worst: every try used, 400
+    sampled tokens each."""
+    from verify import contamination_check
+    contam = contam or contamination_check.Checker.from_public()
+    sk = skeletons(seed, contam)
+    n = sum(len(v) for v in sk.values())
+    p = 400
+    one = n * (p * writer.price_in + 250 * writer.price_out)
+    worst = n * writer.max_attempts * (p * writer.price_in + TINKER_MAX_TOKENS * writer.price_out)
+    return round(one, 4), round(worst, 4)
+
+
+def main(argv, writer=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--paid", action="store_true")
     ap.add_argument("--generator")
     ap.add_argument("--price-in", type=float, help="dollars per million prompt tokens")
     ap.add_argument("--price-out", type=float, help="dollars per million sampled tokens")
     a = ap.parse_args(argv)
+    cache = None
     if a.paid:
         if not (a.generator and a.price_in is not None and a.price_out is not None):
             sys.exit("--paid needs --generator, --price-in and --price-out (read them off Tinker's pricing page)")
+        if a.generator != verify.BASE_MODEL:
+            sys.exit("amendment 4 fixes the answer writer as %s (untouched); got %r" % (verify.BASE_MODEL, a.generator))
         from verify import spend
         spend.phase_start()
         gdir = verify.DATA / "generate"
         gdir.mkdir(parents=True, exist_ok=True)
+        cache = gdir / "answers.jsonl"
+        log_lock = threading.Lock()
 
         def log(rec):
-            with open(gdir / "cost.jsonl", "a") as f:
-                f.write(json.dumps(rec) + "\n")
-        writer = TinkerWriter(a.generator, a.price_in * 1e-6, a.price_out * 1e-6, spend.tinker_room, log)
+            with log_lock:
+                with open(gdir / "cost.jsonl", "a") as f:
+                    f.write(json.dumps(rec) + "\n")
+        start_room = spend.tinker_room()          # read once; this run's own spend is subtracted live
+        holder = {}
+        writer = writer or TinkerWriter(a.generator, a.price_in * 1e-6, a.price_out * 1e-6,
+                                        lambda: start_room - holder["w"].spent, log)
+        holder["w"] = writer
+        typical, worst = projected_generation(writer)
+        print("Answer writer %s on Tinker, %d at a time. Projected $%.2f (worst case, every regeneration used, "
+              "$%.2f). Room under the Tinker stop: $%.2f." % (writer.model, writer.workers, typical, worst, start_room))
+        if worst > start_room:
+            sys.exit("GENERATION NOT STARTED: the worst case $%.2f is over the room $%.2f" % (worst, start_room))
     else:
-        writer = TemplateWriter()
-    sets, rejected = build(writer)
+        writer = writer or TemplateWriter()
+    try:
+        sets, rejected = build(writer, cache=cache)
+    except CapReached as e:
+        print("%s. Finished answers are kept in %s; nothing was written to data-verify/train/. "
+              "Rerun the same command (after any top-up) to continue." % (e, cache))
+        return 1
     write_all(sets, rejected, writer)
     from verify import contamination_check
     return contamination_check.main([])
