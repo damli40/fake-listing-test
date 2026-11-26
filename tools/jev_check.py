@@ -62,7 +62,8 @@ def spent():
         t += json.load(open(p)).get("input_tokens", 0)
     return t * J.PRICE_IN
 
-def run(kind, items):
+def run(kind, items, kind_fn=None):
+    kind_fn = kind_fn or kind
     (OUT / kind).mkdir(parents=True, exist_ok=True)
     todo = [it for it in items if not (OUT / kind / (it["id"] + ".json")).exists()]
     def one(it):
@@ -70,7 +71,7 @@ def run(kind, items):
             return "stop"
         t0 = time.time()
         try:
-            if kind == "pick":
+            if kind_fn == "pick":
                 out, det = J.pick(it["answer"], it["a"], it["b"])
                 rec = {"id": it["id"], "outcome": out, "reads": det["reads"], "input_tokens": det["input_tokens"], "model": det["model"]}
             else:
@@ -97,7 +98,7 @@ def main():
         est = (sum(len(i["answer"]) for i in picks) / 4 + 600 * len(picks)) * 2 + sum(len(i["answer"]) for i in harms) / 4 + 700 * len(harms)
         print("Dry listing only. Rough input tokens %d, about $%.3f at list price. Add --paid to run." % (est, est * J.PRICE_IN))
         return 0
-    run("pick", picks); run("harm", harms)
+    run("pick-v2" if "--v2" in sys.argv else "pick", picks, kind_fn="pick"); run("harm", harms)
     json.dump({"picks": picks, "harms": harms}, open(OUT / "items.json", "w"))
     return 0
 

@@ -52,4 +52,13 @@ Jev's price and behaviour are the vendor's claims until this runs. The compariso
 
 ## Changes after first commit
 
-None yet.
+1. **26 Nov 2026, after the first run. The first run FAILED the seller-picking rule as written: 67 of 74 known
+   answers exactly right (the rule needs 70), with 0 wrong sellers.** Six of the seven misses had one cause, and
+   it was in our wrapper, not in Jev: to cancel position bias we swapped which seller was listed first, but our
+   labels were "first seller" and "second seller". Answers that name a seller by position ("option B", "the first
+   one", "the former") then meant a different seller on the second read, so the two reads disagreed and the
+   outcome became `unclear`. The current judge's prompt avoids this by fixing "link A" and "link B" and swapping
+   only the listing order. Fix: labels now name the link (A = first link, B = second link, with the seller's
+   name), the state gives each link's seller, and the swap changes only the order of the two labels. The same
+   pass rules are applied to a second run (`data-jev/pick-v2/`). This is a second attempt made after seeing the
+   first result, and the report says so. The harm-score part was not changed.
