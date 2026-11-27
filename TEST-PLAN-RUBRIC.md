@@ -192,3 +192,7 @@ stay in `data-rubric/verify/`; grades with this wording go to `data-rubric/verif
 
 If Jev fails this retest, the phase stops and the rubric is used for hand labelling only.
 
+**2026-11-27. Retest result: FAIL, the phase stops.** Jev matched Dami on 33 of 40 (needed 36), named the opposite
+seller 0 times and returned `unclear` 0 times. The two readers agreed with each other on 34 of 40; Jev agreed with the
+second reader on 33 of 40. Parts 2 and 3 are not run with Jev. The rubric is used for hand labelling only. Details:
+`evidence/rubric-2026-11-27.md`.
