@@ -1,11 +1,13 @@
 """RUBRIC phase, parts 1 and 2 (TEST-PLAN-RUBRIC.md). Grades saved VERIFY answers with the six-level rubric.
 
   python tools/rubric_check.py              # dry run: counts only, no call
-  python tools/rubric_check.py --part1      # paid: the 40 answers Dami labelled, then the pass rule
+  python tools/rubric_check.py --part1      # no call: the first 40 were run on 2026-11-26 with wording v1 (failed)
+  python tools/rubric_check.py --part1b     # paid: the second fresh 40 (seed 20261232), wording v2, then the pass rule
   python tools/rubric_check.py --part2      # paid: all 960 saved VERIFY answers
   python tools/rubric_check.py --report     # no call: tables from what is on disk
 
-One file per answer in data-rubric/verify/, so a stopped run resumes. Hard stop: $1 of Jev spend.
+One file per answer in data-rubric/verify-v2/, so a stopped run resumes. data-rubric/verify/ holds the 40 grades
+made with the first wording (v1) and is never read again. Hard stop: $1 of Jev spend.
 """
 import collections
 import csv
@@ -18,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import judge_jev  # noqa: E402
 
-OUT = ROOT / "data-rubric" / "verify"
+OUT = ROOT / "data-rubric" / "verify-v2"  # judge wording v2 (2026-11-27)
 STOP_USD = 1.0
 ARMS = ("base", "prompt", "format-ft", "verify-ft")
 CLAIM = {"V:badge": "a badge saying it is an authorized dealer",
@@ -97,8 +99,8 @@ def dami_counts(label):
     return judge_jev.rubric_counts(label.upper())
 
 
-def part1(items):
-    rows = json.load(open(ROOT / "data-audit" / "rubric-result.json"))["rows"]
+def part1(items, result="rubric2-result.json", out="part1b.json"):
+    rows = json.load(open(ROOT / "data-audit" / result))["rows"]
     run([items[r["id"]] for r in rows])
     match = opposite = unclear = exact = 0
     lines = []
@@ -119,7 +121,7 @@ def part1(items):
     passed = match >= 36 and opposite == 0 and unclear <= 4
     res = {"n": n, "favoured_match": match, "opposite_seller": opposite, "jev_unclear": unclear,
            "exact_level_match": exact, "pass": passed, "rows": lines}
-    json.dump(res, open(ROOT / "data-rubric" / "part1.json", "w"), indent=1)
+    json.dump(res, open(ROOT / "data-rubric" / out, "w"), indent=1)
     print("Favoured match %d of %d (need 36) | opposite seller %d (need 0) | Jev unclear %d (max 4) | exact level %d"
           % (match, n, opposite, unclear, exact))
     print("PART 1:", "PASS" if passed else "FAIL")
@@ -161,6 +163,8 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     print("%d VERIFY answers, %d graded so far, spend so far $%.4f" % (len(items), len(list(OUT.glob("*.json"))), spent()))
     if "--part1" in args:
+        print("Part 1, first 40: run 2026-11-26 with wording v1, failed 33 of 40. See data-rubric/part1.json.")
+    if "--part1b" in args:
         part1(items)
     if "--part2" in args:
         run([items[k] for k in sorted(items)])

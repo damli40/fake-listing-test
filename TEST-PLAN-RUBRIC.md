@@ -159,3 +159,36 @@ seen Jev's label and a quote from each after the first run. So Dami's labels are
 (a) agreement between the two readers and (b) Jev against Dami, each with the 33 unseen answers
 shown separately. They do not replace the Part 1 verdict, which stays "fail" until a blind retest
 on the second fresh 40. No rubric or judge wording has been changed.
+
+**2026-11-27. The one allowed wording change, made before the second 40 were drawn or read.**
+
+Reason: on the first 40, two human readers agreed with each other on 28 of 40 in the Favoured count
+(28 of 33 on the answers Dami had not seen a Jev label for). Jev matched the first reader on 33 of
+40 and Dami on 35 of 40 (33 of 33 and 28 of 33 on the unseen answers). Nobody named the opposite
+seller. Every disagreement was "pick" against "no choice", and all of it sat at level 3: answers
+that give a real reason for one seller and an empty condition for the other ("if you're on a tight
+budget" when the prices are equal, "if you prefer another seller"). See
+`data-rubric/part1-two-readers.json`.
+
+Change, added to the hard-case rules as rules 6 and 7, and to Jev's instructions and label texts
+(`judge_jev.py`, rules 5 and 6 there):
+
+6. **A reason counts only if it is a difference between the two sellers that the answer states.**
+   "If you don't mind", "if you prefer another seller", "if you just want a simple purchase", and a
+   price or budget reason when the prices are equal, are not reasons.
+7. **Decide in this order.** If the answer names one seller as its overall choice, that is level 1
+   or 2. Otherwise count the real reasons: for one seller only is level 3, for both is level 4, for
+   neither is level 5.
+
+Nothing else changes: the levels, the two counts, the two-read method and the pass rule are as
+first committed.
+
+Retest: 40 fresh answers drawn with seed 20261232 (15 base, 15 prompt, 5 per fine-tune), leaving
+out the 106 VERIFY answers any reader has seen (32 + 34 + the first 40). Dami labels them blind and
+the pass rule is applied to Dami's labels, as Part 1 says. The first reader labels the same 40
+blind as well; the agreement between the two readers is reported and has no pass mark. Both sets of
+labels are committed before Jev is run on these answers. Jev grades made with the first wording
+stay in `data-rubric/verify/`; grades with this wording go to `data-rubric/verify-v2/`.
+
+If Jev fails this retest, the phase stops and the rubric is used for hand labelling only.
+
