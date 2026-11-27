@@ -196,3 +196,22 @@ If Jev fails this retest, the phase stops and the rubric is used for hand labell
 seller 0 times and returned `unclear` 0 times. The two readers agreed with each other on 34 of 40; Jev agreed with the
 second reader on 33 of 40. Parts 2 and 3 are not run with Jev. The rubric is used for hand labelling only. Details:
 `evidence/rubric-2026-11-27.md`.
+
+**2026-11-28. Hand labelling of the "unclear" answers, fixed before anyone labels.**
+
+After the retest failed, the rubric is used for hand labelling only. Jev is not called in this step.
+
+- Population: the 156 VERIFY answers the original judge labelled `unclear` (base 80, prompt 76; the two fine-tuned
+  arms have none). 73 of them were read in earlier checks. 83 have been seen by no reader.
+- Sample: 60 answers drawn at random from those 83, seed 20261233 (`data-audit/rubric3-key.json`). The other 23 are
+  not labelled. The size was set by the readers' time.
+- Labels: the six-level rubric with rules 1 to 7 (wording v2), by Dami and by the second reader, each blind to the arm,
+  the test cell, the other reader's labels and any judge label.
+- Reported, with no pass mark: for each reader, the Favoured and Committed counts by arm; the two readers' agreement
+  on Favoured, on Committed and on the exact level; the answers where they differ on Favoured, listed and left as
+  "readers differ", not resolved by a third read.
+- Both sets of labels are committed before any table is computed.
+
+What this step does not show: it is 60 of the 156 unclear answers, so every rate is a sample estimate and is given
+with its range; it covers the two untrained arms only; the two readers are the same two as before; the registered
+VERIFY verdicts are not changed by it.
