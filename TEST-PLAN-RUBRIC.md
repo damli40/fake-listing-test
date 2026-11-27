@@ -148,4 +148,14 @@ Order: Part 1, then Part 2, then Part 3.
 
 ## Changes after first commit
 
-None yet.
+**2026-11-27. Correction: who labelled the first 40.** The 40 labels in
+`data-audit/rubric-result.json` were made by a third-party reader, not by Dami as Part 1 says. The
+Part 1 result (Jev matched 33 of 40, needed 36: fail; `data-rubric/part1.json`) is therefore Jev
+against that reader. The field name `dami` in both files is kept so they still match the script;
+read it as "first reader".
+
+Dami now labels the same 40. Dami is not blind on 7 of them (n = 5, 7, 13, 14, 23, 27, 38), having
+seen Jev's label and a quote from each after the first run. So Dami's labels are reported as
+(a) agreement between the two readers and (b) Jev against Dami, each with the 33 unseen answers
+shown separately. They do not replace the Part 1 verdict, which stays "fail" until a blind retest
+on the second fresh 40. No rubric or judge wording has been changed.
